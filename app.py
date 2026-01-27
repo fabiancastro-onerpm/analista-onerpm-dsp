@@ -4,11 +4,12 @@ import google.generativeai as genai
 from streamlit_gsheets import GSheetsConnection
 import matplotlib.pyplot as plt
 import seaborn as sns
+import re # Importamos herramientas para buscar texto exacto
 
 # --- CONFIGURACIÓN DE PÁGINA ---
 st.set_page_config(page_title="Analista ONErpm AI", page_icon="🎹", layout="centered")
-st.title("🎹 Chat con Datos ONErpm")
-st.caption("Modo: Datos Reales (Sin Alucinaciones)")
+st.title("🎹 Chat con DSP Global")
+st.caption("Modo: Análisis Robusto (Filtro Anti-Errores)")
 st.markdown("---")
 
 # --- 1. CONEXIÓN API ---
@@ -22,12 +23,11 @@ except Exception:
 @st.cache_resource
 def get_best_model():
     try:
-        # Intentamos listar modelos, si falla, usamos el string directo
         try:
             available_models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
         except:
-            return 'models/gemini-1.5-flash' # Fallback seguro
-            
+            return 'models/gemini-1.5-flash'
+        
         preferences = ['models/gemini-1.5-flash', 'models/gemini-1.5-pro', 'models/gemini-pro']
         for pref in preferences:
             if pref in available_models: return pref
@@ -37,107 +37,119 @@ def get_best_model():
 
 valid_model_name = get_best_model()
 
-# --- 3. CARGA Y LIMPIEZA DE DATOS (CRUCIAL) ---
+# --- 3. CARGA Y LIMPIEZA DE DATOS ---
 url_sheet = "https://docs.google.com/spreadsheets/d/10y2YowTEgQYdWxs6c8D0fgJDDwGIT8_wyH0rQbERgG0/edit?gid=1919114384#gid=1919114384"
 
 @st.cache_data(ttl=600)
 def load_data():
     conn = st.connection("gsheets", type=GSheetsConnection)
     try:
-        # Leer datos
         df = conn.read(spreadsheet=url_sheet, worksheet="DSP COPY")
         
-        # --- LIMPIEZA PROFUNDA (PARA EVITAR ALUCINACIONES) ---
-        
-        # 1. Limpiar espacios en blanco en columnas de texto (Ej: "Spotify " -> "Spotify")
+        # Limpieza de espacios en texto (Vital para evitar "0 resultados")
         cols_texto = ['DSP', 'Artist', 'Title', 'Playlist', 'Genre']
         for col in cols_texto:
             if col in df.columns:
                 df[col] = df[col].astype(str).str.strip()
         
-        # 2. Asegurar que Año y Mes sean números
-        if 'Year' in df.columns:
-            df['Year'] = pd.to_numeric(df['Year'], errors='coerce')
-        
-        if 'Month' in df.columns:
-            # Si el mes viene como texto ("Enero"), intentamos mapearlo o forzar numérico
-            # Si ya son números, aseguramos que sean int
-            df['Month'] = pd.to_numeric(df['Month'], errors='coerce')
-
-        # 3. Fechas
-        if 'Release Date' in df.columns:
-            df['Release Date'] = pd.to_datetime(df['Release Date'], errors='coerce')
+        # Asegurar numéricos
+        if 'Year' in df.columns: df['Year'] = pd.to_numeric(df['Year'], errors='coerce')
+        if 'Month' in df.columns: df['Month'] = pd.to_numeric(df['Month'], errors='coerce')
+        if 'Release Date' in df.columns: df['Release Date'] = pd.to_datetime(df['Release Date'], errors='coerce')
             
         return df
     except Exception as e:
         st.error(f"Error leyendo los datos: {e}")
         return None
 
-with st.spinner('Limpiando y organizando datos...'):
+with st.spinner('Cargando datos...'):
     df = load_data()
 
-# --- 4. CHAT INTELIGENTE ---
-if df is not None:
-    # Verificador rápido para TI (Opcional, para ver qué detectó realmente)
-    with st.expander("🔍 Ver datos que la IA está leyendo (Depuración)"):
-        st.write("DSPs únicos encontrados:", df['DSP'].unique())
-        st.write("Años únicos encontrados:", df['Year'].unique())
-        st.write(f"Total filas: {len(df)}")
+# --- 4. FUNCIÓN EXTRAER CÓDIGO (NUEVO) ---
+def limpiar_codigo(texto_respuesta):
+    """
+    Busca el código Python dentro de la respuesta de la IA, ignorando saludos.
+    """
+    # Patrón para buscar lo que está entre ```python y ```
+    patron = r"```python(.*?)```"
+    coincidencia = re.search(patron, texto_respuesta, re.DOTALL)
+    
+    if coincidencia:
+        # Si encuentra el bloque, devuelve solo el contenido
+        return coincidencia.group(1).strip()
+    elif "```" in texto_respuesta:
+        # Si hay bloques sin etiqueta python
+        patron_generico = r"```(.*?)```"
+        coincidencia_gen = re.search(patron_generico, texto_respuesta, re.DOTALL)
+        if coincidencia_gen:
+            return coincidencia_gen.group(1).strip()
+    
+    # Si no hay bloques, intentamos limpiar el texto crudo por si acaso
+    texto_limpio = texto_respuesta.replace("```python", "").replace("```", "")
+    return texto_limpio.strip()
 
+# --- 5. CHAT ---
+if df is not None:
     if "messages" not in st.session_state:
         st.session_state.messages = []
-        st.session_state.messages.append({"role": "assistant", "content": "Listo. He limpiado los datos de espacios y errores. ¿Qué analizamos?"})
+        st.session_state.messages.append({"role": "assistant", "content": "Hola. Estoy listo para analizar tus destaques."})
 
     for message in st.session_state.messages:
         with st.chat_message(message["role"]):
             if isinstance(message["content"], str):
                 st.markdown(message["content"])
 
-    if prompt := st.chat_input("Ej: Diferencia Spotify Enero 2025 vs 2026"):
+    if prompt := st.chat_input("Ej: Comparativa Spotify Enero 2025 vs 2026"):
         st.session_state.messages.append({"role": "user", "content": prompt})
         with st.chat_message("user"):
             st.markdown(prompt)
 
         with st.chat_message("assistant"):
             caja_loading = st.empty()
-            caja_loading.markdown(f"🕵️ *Investigando datos reales...*")
+            caja_loading.markdown(f"🤖 *Procesando solicitud...*")
 
             try:
-                # Metadata para que la IA entienda qué tiene
                 info_columnas = df.dtypes.to_markdown()
-                # Mostramos los valores únicos de DSP para que sepa cómo buscarlos
-                unique_dsps = list(df['DSP'].unique())
-                
+                unique_dsps = list(df['DSP'].unique())[:10] # Muestra primeros 10 para no saturar
+
                 prompt_maestro = f"""
-                Eres un Analista de Datos Senior (Python/Pandas).
+                Actúa como Científico de Datos (Python).
                 
-                DATOS DISPONIBLES:
+                CONTEXTO:
                 - DataFrame `df` cargado.
-                - Columnas: {info_columnas}
-                - VALORES REALES EN COLUMNA 'DSP': {unique_dsps}
+                - 1 FILA = 1 DESTAQUE (Placement).
+                - Columnas clave: `DSP`, `Year`, `Month`, `Release Date`.
+                - Valores DSP reales: {unique_dsps}...
                 
-                INSTRUCCIONES DE VERDAD (NO ALUCINAR):
-                1. El usuario pregunta: "{prompt}"
-                2. CADA FILA ES UN DESTAQUE (Placement). Cuenta filas `len(df)`.
-                3. FILTRADO:
-                   - Usa `df['DSP'] == 'ValorExacto'` (copia del array de arriba).
-                   - O usa `df['DSP'].str.contains('Spotify', case=False)` para ser seguro.
-                   - Para FECHAS: Usa las columnas `Year` y `Month` (numéricos).
-                4. ANTES DE CALCULAR PORCENTAJES:
-                   - Muestra con `st.write` cuántos registros exactos encontraste para cada año.
-                   - Ejemplo: "Encontré X filas para 2025 y Y filas para 2026".
-                   - SI ALGUNO DA 0, AVISA AL USUARIO que no hay datos para ese filtro.
-                5. Genera SOLO código Python ejecutable para Streamlit.
+                USUARIO: "{prompt}"
+                
+                INSTRUCCIONES:
+                1. Genera código Python para Streamlit.
+                2. Filtra estrictamente. Ej: df[(df['Year']==2025) & (df['Month']==1)].
+                3. IMPRIME RESULTADOS INTERMEDIOS: Usa `st.write(f"Filas encontradas 2025: {{len(df_2025)}}")` para depurar.
+                4. Usa `st.metric` para mostrar la variación.
+                5. Genera gráficas con `fig, ax = plt.subplots()` y `st.pyplot(fig)`.
+                
+                IMPORTANTE: NO escribas texto fuera del bloque de código.
                 """
 
                 model = genai.GenerativeModel(valid_model_name)
                 response = model.generate_content(prompt_maestro)
-                codigo = response.text.replace("```python", "").replace("```", "").replace("plt.show()", "").strip()
+                
+                # AQUI USAMOS EL NUEVO FILTRO
+                codigo_seguro = limpiar_codigo(response.text)
                 
                 caja_loading.empty()
+                
+                # Ejecución
                 local_vars = {"df": df, "pd": pd, "st": st, "plt": plt, "sns": sns}
-                exec(codigo, {}, local_vars)
-                st.session_state.messages.append({"role": "assistant", "content": "✅ Análisis completado."})
+                exec(codigo_seguro, {}, local_vars)
+                
+                st.session_state.messages.append({"role": "assistant", "content": "✅ Resultado generado."})
 
             except Exception as e:
-                caja_loading.error(f"Error en el código generado: {str(e)}")
+                caja_loading.error(f"Error técnico: {str(e)}")
+                with st.expander("Ver código que falló"):
+                    # Mostramos el código que intentó ejecutar para entender el error
+                    if 'codigo_seguro' in locals():
+                        st.code(codigo_seguro)

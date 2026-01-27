@@ -109,7 +109,7 @@ if df is not None:
                 """
 
                 # Llamar a Gemini
-                model = genai.GenerativeModel('gemini-pro')
+                model = genai.GenerativeModel('gemini-1.5-flash')
                 response = model.generate_content(prompt_maestro)
                 
                 # Limpiar el código por si acaso

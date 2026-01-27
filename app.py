@@ -5,118 +5,125 @@ from streamlit_gsheets import GSheetsConnection
 import matplotlib.pyplot as plt
 import seaborn as sns
 import re
+import time
 
 # -----------------------------------------------------------------------------
-# 1. CONFIGURACIÓN Y DIAGNÓSTICO VISUAL
+# 1. CONFIGURACIÓN DE PÁGINA Y ESTILO
 # -----------------------------------------------------------------------------
-st.set_page_config(page_title="Analista ONErpm (Modo Preciso)", page_icon="🎹", layout="wide")
+st.set_page_config(page_title="Data Analyst ONErpm", page_icon="🎹", layout="wide")
 
-with st.sidebar:
-    st.header("🔧 Panel de Diagnóstico")
-    st.info("Aquí verás qué datos reales está leyendo el sistema.")
+st.title("🎹 ONErpm Data Analyst (Modo Debug Total)")
+st.markdown("---")
 
-# --- CONEXIÓN API ---
+# -----------------------------------------------------------------------------
+# 2. CONEXIÓN Y SELECCIÓN DE MODELO
+# -----------------------------------------------------------------------------
 try:
     genai.configure(api_key=st.secrets["GOOGLE_API_KEY"])
 except Exception:
-    st.error("❌ FALTA API KEY: Ve a Settings -> Secrets y configurala.")
+    st.error("❌ CRÍTICO: No se encontró la API Key en los Secrets.")
     st.stop()
 
-# --- DETECTOR DE MODELO ---
 @st.cache_resource
-def get_model_name():
+def get_robust_model():
+    """Intenta obtener el modelo más estable y económico"""
     try:
-        models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
-        # Preferimos Flash por velocidad, luego Pro
-        for pref in ['models/gemini-1.5-flash', 'models/gemini-pro']:
-            if pref in models: return pref
-        return models[0] if models else 'models/gemini-1.5-flash'
+        # Forzamos Flash 1.5 porque es rápido y consume menos cuota
+        return 'models/gemini-1.5-flash' 
     except:
-        return 'models/gemini-1.5-flash'
+        return 'models/gemini-pro'
 
-MODEL_NAME = get_model_name()
-st.sidebar.success(f"🤖 Cerebro activo: {MODEL_NAME.split('/')[-1]}")
+MODEL_NAME = get_robust_model()
 
 # -----------------------------------------------------------------------------
-# 2. CARGA Y LIMPIEZA DE DATOS (LA PARTE MÁS IMPORTANTE)
+# 3. CARGA Y "LAVADO" DE DATOS (ETL)
 # -----------------------------------------------------------------------------
 url_sheet = "https://docs.google.com/spreadsheets/d/10y2YowTEgQYdWxs6c8D0fgJDDwGIT8_wyH0rQbERgG0/edit?gid=1919114384#gid=1919114384"
 
 @st.cache_data(ttl=600)
-def load_and_clean_data():
+def load_data_expert():
     conn = st.connection("gsheets", type=GSheetsConnection)
     try:
         df = conn.read(spreadsheet=url_sheet, worksheet="DSP COPY")
         
-        # --- LIMPIEZA AGRESIVA ---
-        # 1. Convertir nombres de columnas a limpio (sin espacios extra)
+        # --- LIMPIEZA MAESTRA (NORMALIZACIÓN) ---
+        # 1. Limpiar nombres de columnas
         df.columns = df.columns.str.strip()
         
-        # 2. Convertir columnas de TEXTO clave a Mayúsculas y sin espacios (Para búsquedas infalibles)
-        # Creamos columnas "NORMALIZADAS" internas para buscar
-        if 'DSP' in df.columns:
-            df['DSP_NORM'] = df['DSP'].astype(str).str.upper().str.strip()
-        
-        # 3. Forzar AÑO y MES a números enteros
-        cols_num = ['Year', 'Month', 'Week', 'Q']
-        for col in cols_num:
+        # 2. Crear columnas "NORMALIZADAS" (Mayúsculas + Sin Espacios) para filtrado infalible
+        # La IA usará estas columnas, no las originales sucias.
+        cols_texto = ['DSP', 'Artist', 'Title', 'Playlist', 'Genre', 'Territory']
+        for col in cols_texto:
             if col in df.columns:
-                df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0).astype(int)
+                # Rellenar vacíos, convertir a string, quitar espacios, poner mayúsculas
+                df[f"{col}_NORM"] = df[col].fillna("UNKNOWN").astype(str).str.strip().str.upper()
 
-        # 4. Fechas
+        # 3. Blindar Fechas y Números
+        if 'Year' in df.columns:
+            df['Year'] = pd.to_numeric(df['Year'], errors='coerce').fillna(0).astype(int)
+        
+        if 'Month' in df.columns:
+            # Mapeo manual por si vienen en texto en español/inglés
+            meses_map = {'enero':1, 'january':1, 'jan':1, 'febrero':2, 'february':2, 'feb':2} # Se puede extender
+            # Si es texto, intentamos mapear. Si es numero, lo dejamos.
+            df['Month'] = df['Month'].apply(lambda x: meses_map.get(str(x).lower(), x) if isinstance(x, str) and not x.isnumeric() else x)
+            df['Month'] = pd.to_numeric(df['Month'], errors='coerce').fillna(0).astype(int)
+
         if 'Release Date' in df.columns:
             df['Release Date'] = pd.to_datetime(df['Release Date'], errors='coerce')
 
         return df
     except Exception as e:
-        st.error(f"Error cargando archivo: {e}")
+        st.error(f"Error en ETL (Carga de datos): {e}")
         return None
 
-df = load_and_clean_data()
+with st.spinner('Realizando limpieza profunda de datos...'):
+    df = load_data_expert()
 
 # -----------------------------------------------------------------------------
-# 3. VERIFICACIÓN DE DATOS (PARA QUE NO TE MIENTA)
+# 4. BARRA LATERAL DE LA VERDAD (DEBUG DATA)
 # -----------------------------------------------------------------------------
 if df is not None:
-    # Mostramos en la barra lateral lo que REALMENTE hay
     with st.sidebar:
-        st.markdown("---")
-        st.write(f"📊 **Filas Totales:** {len(df)}")
+        st.header("🔍 Panel de Control de Datos")
+        st.info("Estos son los datos que Python ve ANTES de la IA.")
         
+        st.write(f"**Total Destaques:** {len(df)}")
+        
+        # Auditoría de Años
         if 'Year' in df.columns:
-            years = sorted(df['Year'].unique())
-            st.write(f"📅 **Años detectados:** {years}")
+            counts_year = df['Year'].value_counts().sort_index()
+            st.write("**Conteo por Año:**")
+            st.dataframe(counts_year)
             
-        if 'DSP' in df.columns:
-            dsps = df['DSP'].unique()
-            st.write(f"🎧 **DSPs detectados ({len(dsps)}):**")
-            st.code(dsps)
-
-    # Título principal
-    st.title("🎹 Chat de Datos (Sin Alucinaciones)")
-    st.markdown("""
-    Este modo muestra los pasos intermedios. Si dice "0 filas encontradas", 
-    revisa el Panel de Diagnóstico a la izquierda para ver si el año existe.
-    """)
+        # Auditoría de DSPs
+        if 'DSP_NORM' in df.columns:
+            st.write("**DSPs Detectados:**")
+            st.code(df['DSP_NORM'].unique())
 
 # -----------------------------------------------------------------------------
-# 4. LÓGICA DEL CHAT
+# 5. MOTOR DE INTELIGENCIA (CHAT)
 # -----------------------------------------------------------------------------
-def extract_code(text):
-    """Limpia el texto para sacar solo el código Python"""
+
+def extract_python_code(text):
+    """Extrae quirúrgicamente solo el código Python"""
     pattern = r"```python(.*?)```"
     match = re.search(pattern, text, re.DOTALL)
     if match: return match.group(1).strip()
     return text.replace("```python", "").replace("```", "").strip()
 
 if df is not None:
+    # Inicializar historial
     if "messages" not in st.session_state:
         st.session_state.messages = []
+        st.session_state.messages.append({"role": "assistant", "content": "Soy tu Data Analyst. Uso datos normalizados para máxima precisión. ¿Qué analizamos?"})
 
+    # Mostrar mensajes previos
     for msg in st.session_state.messages:
         with st.chat_message(msg["role"]):
             st.markdown(msg["content"])
 
+    # Input Usuario
     if prompt := st.chat_input("Ej: Diferencia Spotify Enero 2025 vs 2026"):
         st.session_state.messages.append({"role": "user", "content": prompt})
         with st.chat_message("user"):
@@ -124,63 +131,66 @@ if df is not None:
 
         with st.chat_message("assistant"):
             caja = st.empty()
-            caja.info("🕵️ Validando datos y generando código...")
+            caja.info("🧠 Generando lógica de análisis...")
 
             try:
-                # PREPARAMOS EL CONTEXTO PERFECTO
-                columnas = list(df.columns)
-                # Le damos los valores UNICOS REALES para que no adivine
-                unique_dsp_list = list(df['DSP_NORM'].unique()) if 'DSP_NORM' in df.columns else []
-                unique_years = list(df['Year'].unique()) if 'Year' in df.columns else []
+                # --- PROMPT DE INGENIERÍA DE DATOS ---
+                # Le damos las columnas NORMALIZADAS para que filtre por ahí
+                columnas_disponibles = list(df.columns)
+                unique_dsps = list(df['DSP_NORM'].unique()) if 'DSP_NORM' in df.columns else []
                 
                 prompt_maestro = f"""
-                Eres un Experto Data Scientist en Python.
+                Actúa como Data Scientist Senior en Python.
                 
-                TU OBJETIVO: Generar código Python para responder: "{prompt}"
+                OBJETIVO: Responder: "{prompt}"
                 
-                TIENES ESTOS DATOS REALES (NO INVENTES OTROS):
-                - DataFrame: `df`
-                - Columnas: {columnas}
-                - Años disponibles (int): {unique_years}
-                - DSPs disponibles (NORMALIZADOS MAYÚSCULAS): {unique_dsp_list}
+                DATOS DISPONIBLES (DataFrame `df`):
+                - Columnas: {columnas_disponibles}
+                - DSPs Disponibles (Usar columna 'DSP_NORM'): {unique_dsps}
                 
-                REGLAS ESTRICTAS DE FILTRADO:
-                1. PARA FILTRAR TEXTO (Artist, DSP, etc):
-                   - Usa SIEMPRE `.str.upper().str.strip()` o la columna `DSP_NORM`.
-                   - Ejemplo CORRECTO: `df[df['DSP_NORM'] == 'SPOTIFY']`
-                   - Ejemplo INCORRECTO: `df[df['DSP'] == 'Spotify']` (Esto falla por mayúsculas).
+                REGLAS DE ORO (PARA EVITAR ERRORES):
+                1. **FILTRADO INFALIBLE**: 
+                   - NO uses la columna 'DSP'. USA SIEMPRE `df['DSP_NORM']`.
+                   - Al filtrar texto, usa MAYÚSCULAS. Ej: `df[df['DSP_NORM'] == 'SPOTIFY']`.
                 
-                2. PARA FILTRAR FECHAS:
-                   - Usa las columnas numéricas `Year` y `Month` siempre que sea posible.
-                   - Ejemplo: `df[(df['Year'] == 2025) & (df['Month'] == 1)]`
+                2. **FILTRADO DE FECHAS**:
+                   - Usa `Year` (int) y `Month` (int).
+                   - Ej para Enero 2025: `df[(df['Year'] == 2025) & (df['Month'] == 1)]`
                 
-                3. REGLA "CHISMOSA" (DEBUG):
-                   - ANTES de dar el resultado final, debes imprimir cuántas filas encontraste en cada paso.
-                   - Usa: `st.write(f"Paso 1: Encontré {{len(filtro1)}} filas para 2025")`
-                   - Usa: `st.write(f"Paso 2: Encontré {{len(filtro2)}} filas para 2026")`
-                   - Si len es 0, usa `st.error("No hay datos para este filtro")`.
+                3. **VERIFICACIÓN (DEBUG)**:
+                   - Antes de mostrar el resultado final, IMPRIME cuántas filas encontraste.
+                   - `st.write(f"Debug: Encontré {{len(df_filtrado)}} registros para... ")`
+                   - Si len es 0, usa `st.warning("No encontré datos con estos filtros.")` y detente.
                 
-                4. SALIDA:
-                   - Tablas: `st.dataframe()`
-                   - Texto: `st.write()`
-                   - Gráficos: `fig, ax = plt.subplots()... st.pyplot(fig)`
+                4. **VISUALIZACIÓN**:
+                   - Usa `st.metric(label="...", value="...")` para números clave.
+                   - Gráficos: `fig, ax = plt.subplots()`, usa `sns.barplot`, finaliza con `st.pyplot(fig)`.
                 
-                Genera SOLO el código Python.
+                Genera SOLO código Python.
                 """
-
-                model = genai.GenerativeModel(MODEL_NAME)
-                response = model.generate_content(prompt_maestro)
-                code = extract_code(response.text)
                 
+                # Llamada a la API con control de Errores (Retry)
+                code = "" # Inicializamos variable para evitar NameError
+                try:
+                    model = genai.GenerativeModel(MODEL_NAME)
+                    response = model.generate_content(prompt_maestro)
+                    code = extract_python_code(response.text)
+                except Exception as api_error:
+                    if "429" in str(api_error):
+                        st.error("🚦 Tráfico alto en la IA (Error 429). Espera 30 segundos y prueba de nuevo.")
+                        st.stop()
+                    else:
+                        raise api_error
+
                 caja.empty()
                 
-                # Entorno de ejecución seguro
+                # Ejecución del Código
                 local_vars = {"df": df, "pd": pd, "st": st, "plt": plt, "sns": sns}
                 exec(code, {}, local_vars)
                 
-                st.session_state.messages.append({"role": "assistant", "content": "✅ Ejecución finalizada."})
+                st.session_state.messages.append({"role": "assistant", "content": "✅ Análisis finalizado."})
 
             except Exception as e:
-                caja.error(f"Error técnico: {e}")
-                with st.expander("Ver código generado (Debug)"):
-                    st.code(code)
+                caja.error(f"Error de Ejecución: {e}")
+                with st.expander("Ver código que falló (Debug)"):
+                    st.code(code if code else "No se generó código por error de API")

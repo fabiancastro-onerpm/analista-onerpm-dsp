@@ -21,13 +21,20 @@ st.set_page_config(
 st.markdown("""
 <style>
     .stApp { background-color: #FFFFFF !important; }
-    p, h1, h2, h3, h4, li, span, label, div { color: #000000 !important; font-family: 'Helvetica Neue', sans-serif; }
-    div[data-testid="stMetric"] { background-color: #F3F4F6 !important; border: 1px solid #9CA3AF; border-radius: 8px; }
+    p, h1, h2, h3, h4, li, span, label, div, th, td { 
+        color: #000000 !important; 
+        font-family: 'Helvetica Neue', sans-serif; 
+    }
+    div[data-testid="stMetric"] { 
+        background-color: #F3F4F6 !important; 
+        border: 1px solid #9CA3AF; 
+        border-radius: 8px; 
+    }
     div[data-testid="stMetricLabel"] { color: #374151 !important; font-weight: bold; }
     div[data-testid="stMetricValue"] { color: #000000 !important; font-weight: 800; }
     .stChatMessage { background-color: #F9FAFB !important; border: 1px solid #E5E7EB; }
     div[data-testid="stDataFrame"] { border: 1px solid #000; }
-    .stAlert { background-color: #EFF6FF !important; border: 1px solid #1D4ED8; }
+    [data-testid="stSidebar"] { background-color: #F8F9FA !important; border-right: 1px solid #E5E7EB; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -38,10 +45,10 @@ else:
     genai.configure(api_key=st.secrets["GOOGLE_API_KEY"])
 
 # ==============================================================================
-# 2. MOTOR ETL (LIMPIEZA EXACTA DE COLUMNAS)
+# 2. MOTOR ETL (LIMPIEZA UNIVERSAL)
 # ==============================================================================
 def normalize_text(text):
-    """Limpia texto de celdas (Sin tildes, Mayúsculas)."""
+    """LIMPIEZA PROFUNDA: Sin tildes, Mayúsculas, Sin espacios extra."""
     if not isinstance(text, str): return str(text)
     text = "".join(c for c in unicodedata.normalize('NFKD', text) if not unicodedata.combining(c))
     return text.upper().strip()
@@ -53,91 +60,74 @@ def load_data():
     conn = st.connection("gsheets", type=GSheetsConnection)
     return conn.read(spreadsheet=URL_SHEET, worksheet="DSP COPY")
 
-@st.cache_data(ttl=3600, show_spinner="🧹 Estandarizando Columnas...")
+@st.cache_data(ttl=3600, show_spinner="🧹 Ejecutando Limpieza Universal...")
 def clean_dataframe(df):
     try:
-        # --- PASO 1: LIMPIEZA AGRESIVA DE ENCABEZADOS ---
-        # Convertimos todo a String -> Mayúsculas -> Quitamos saltos de linea -> Quitamos espacios extra
-        # Esto convierte "DSP " en "DSP" y "Inclusion Date \nMM/DD" en "INCLUSION DATE MM/DD"
+        # 1. Limpieza de Encabezados (Quitar saltos de línea y espacios)
         df.columns = [str(c).upper().replace('\n', ' ').strip() for c in df.columns]
         
-        # --- PASO 2: MAPEO DE COLUMNAS (BUSQUEDA INTELIGENTE) ---
-        # Buscamos tus columnas clave dentro de los nombres sucios del Excel
+        # 2. LISTA MAESTRA DE COLUMNAS DE TEXTO A LIMPIAR
+        # Estas son las que el usuario querrá analizar
+        target_text_cols = [
+            'DSP', 'ARTIST', 'TITLE', 'GENRE', 'SUB-GENRE', 
+            'TERRITORY', 'ORIGIN', 'PLAYLIST', 'BUSINESS UNIT', 'FORMAT'
+        ]
         
-        # Mapa: Nombre Interno -> Qué buscar en el Excel
-        key_columns = {
-            'DSP_REAL': 'DSP',
-            'ARTIST_REAL': 'ARTIST',
-            'INCLUSION_REAL': 'INCLUSION DATE',
-            'YEAR_REAL': 'YEAR',
-            'MONTH_REAL': 'MONTH'
-        }
-        
-        found_cols = {}
-        
-        for internal_name, search_term in key_columns.items():
-            # Buscamos si alguna columna del excel CONTIENE la palabra clave
-            match = next((c for c in df.columns if search_term in c), None)
+        cleaned_cols_log = []
+
+        # BUCLE DE LIMPIEZA MASIVA
+        for target in target_text_cols:
+            # Buscamos la columna en el Excel (parecida al nombre target)
+            match = next((c for c in df.columns if target in c), None)
+            
             if match:
-                found_cols[internal_name] = match
+                # CREAMOS LA VERSIÓN _CLEAN AUTOMÁTICAMENTE
+                clean_col_name = f"{target.replace('-', '_').replace(' ', '_')}_CLEAN" # Ej: SUB-GENRE -> SUB_GENRE_CLEAN
+                df[clean_col_name] = df[match].apply(lambda x: normalize_text(str(x)) if pd.notnull(x) else "UNKNOWN")
+                cleaned_cols_log.append(clean_col_name)
         
-        # --- PASO 3: PROCESAMIENTO ---
+        # 3. TRATAMIENTO ESPECIAL DE FECHAS (AÑO Y MES)
+        col_inclusion = next((c for c in df.columns if 'INCLUSION' in c), None)
+        col_release = next((c for c in df.columns if 'RELEASE' in c), None)
+        col_year_man = next((c for c in df.columns if 'YEAR' == c), None)
+        col_month_man = next((c for c in df.columns if 'MONTH' == c), None)
+
+        df['Year_Final'] = 0
+        df['Month_Final'] = 0
         
-        # 3.1 DSP (Crítico)
-        if 'DSP_REAL' in found_cols:
-            col_name = found_cols['DSP_REAL']
-            df['DSP_CLEAN'] = df[col_name].apply(lambda x: normalize_text(str(x)) if pd.notnull(x) else "UNKNOWN")
-        else:
-            st.error("❌ NO SE ENCONTRÓ LA COLUMNA 'DSP'. Revisa la lista de columnas en el sidebar.")
-            df['DSP_CLEAN'] = "UNKNOWN"
-
-        # 3.2 Artista
-        if 'ARTIST_REAL' in found_cols:
-            df['Artist_CLEAN'] = df[found_cols['ARTIST_REAL']].apply(lambda x: normalize_text(str(x)))
-
-        # 3.3 Fechas (Inclusion Date)
-        if 'INCLUSION_REAL' in found_cols:
-            col_inc = found_cols['INCLUSION_REAL']
-            df[col_inc] = pd.to_datetime(df[col_inc], errors='coerce')
-            df['Year_Final'] = df[col_inc].dt.year.fillna(0).astype(int)
-            df['Month_Final'] = df[col_inc].dt.month.fillna(0).astype(int)
-        else:
-            # Si falla inclusion, usamos Year/Month manuales
-            year_col = found_cols.get('YEAR_REAL', 'YEAR')
-            month_col = found_cols.get('MONTH_REAL', 'MONTH')
+        # Prioridad 1: Inclusion Date
+        if col_inclusion:
+            dt_inc = pd.to_datetime(df[col_inclusion], errors='coerce')
+            df['Year_Final'] = dt_inc.dt.year.fillna(0).astype(int)
+            df['Month_Final'] = dt_inc.dt.month.fillna(0).astype(int)
             
-            df['Year_Final'] = pd.to_numeric(df.get(year_col, 0), errors='coerce').fillna(0).astype(int)
-            df['Month_Final'] = pd.to_numeric(df.get(month_col, 0), errors='coerce').fillna(0).astype(int)
+        # Prioridad 2: Rellenar con Manuales
+        if col_year_man:
+            y_man = pd.to_numeric(df[col_year_man], errors='coerce').fillna(0).astype(int)
+            df['Year_Final'] = df.apply(lambda x: y_man[x.name] if x['Year_Final'] == 0 else x['Year_Final'], axis=1)
 
-        # 3.4 Parche de Respaldo para Year/Month Manuales
-        # Si la fecha de inclusión dio 0, intentamos leer las columnas manuales
-        if 'YEAR_REAL' in found_cols:
-            y_col = found_cols['YEAR_REAL']
-            df['Year_Manual'] = pd.to_numeric(df[y_col], errors='coerce').fillna(0).astype(int)
-            df['Year_Final'] = df.apply(lambda x: x['Year_Manual'] if x['Year_Final'] == 0 else x['Year_Final'], axis=1)
-
-        if 'MONTH_REAL' in found_cols:
-            m_col = found_cols['MONTH_REAL']
-            meses_map = {'ENERO':1, 'ENE':1, 'JAN':1, 'FEBRERO':2, 'FEB':2, 'MARZO':3, 'MAR':3,
-                         'ABRIL':4, 'ABR':4, 'MAYO':5, 'MAY':5, 'JUNIO':6, 'JUN':6,
-                         'JULIO':7, 'JUL':7, 'AGOSTO':8, 'AGO':8, 'SEPTIEMBRE':9, 'SEP':9,
-                         'OCTUBRE':10, 'OCT':10, 'NOVIEMBRE':11, 'NOV':11, 'DICIEMBRE':12, 'DIC':12}
+        if col_month_man:
+            mapa_mes = {'ENERO':1, 'ENE':1, 'JAN':1, 'FEBRERO':2, 'FEB':2, 'MARZO':3, 'MAR':3,
+                        'ABRIL':4, 'ABR':4, 'MAYO':5, 'MAY':5, 'JUNIO':6, 'JUN':6,
+                        'JULIO':7, 'JUL':7, 'AGOSTO':8, 'AGO':8, 'SEPTIEMBRE':9, 'SEP':9,
+                        'OCTUBRE':10, 'OCT':10, 'NOVIEMBRE':11, 'NOV':11, 'DICIEMBRE':12, 'DIC':12}
             
-            def get_month_num(x):
+            def get_month(x):
                 s = normalize_text(str(x))
                 if s.isdigit(): return int(s)
-                return meses_map.get(s, 0)
-            
-            df['Month_Manual'] = df[m_col].apply(get_month_num)
-            df['Month_Final'] = df.apply(lambda x: x['Month_Manual'] if x['Month_Final'] == 0 else x['Month_Final'], axis=1)
+                return mapa_mes.get(s, 0)
+                
+            m_man = df[col_month_man].apply(get_month)
+            df['Month_Final'] = df.apply(lambda x: m_man[x.name] if x['Month_Final'] == 0 else x['Month_Final'], axis=1)
 
-        # Filtro final
-        df = df[df['DSP_CLEAN'] != 'UNKNOWN']
-        
-        return df, df.columns.tolist()
+        # Filtro de seguridad (Filas vacías)
+        if 'DSP_CLEAN' in df.columns:
+            df = df[df['DSP_CLEAN'] != 'UNKNOWN']
+
+        return df, cleaned_cols_log
 
     except Exception as e:
-        st.error(f"Error Crítico ETL: {e}")
+        st.error(f"Error ETL: {e}")
         return pd.DataFrame(), []
 
 # ==============================================================================
@@ -157,18 +147,17 @@ with st.sidebar:
     st.divider()
     
     raw_df = load_data()
-    df, cols_detected = clean_dataframe(raw_df)
+    df, cols_clean = clean_dataframe(raw_df)
     
-    # --- DIAGNÓSTICO DE COLUMNAS (PARA QUE VEAS QUE SÍ LAS LEYÓ) ---
-    with st.expander("✅ Columnas Leídas (Check)"):
-        st.write(cols_detected)
-
     if not df.empty:
-        st.success(f"Cargado: {len(df)} filas")
-        summary = df.groupby(['Year_Final', 'DSP_CLEAN']).size().reset_index(name='Conteo')
-        truth_context = summary.to_string(index=False)
-        with st.expander("Ver Tabla de Verdad"):
-            st.text(truth_context)
+        # VISOR DE COLUMNAS DISPONIBLES (Para que sepas qué puedes preguntar)
+        with st.expander("✅ Columnas Listas para Analizar"):
+            st.write(cols_clean)
+        
+        # TABLA DE VERDAD (AÑO | MES | DSP)
+        pivot = df.groupby(['Year_Final', 'Month_Final', 'DSP_CLEAN']).size().reset_index(name='Count')
+        pivot = pivot[pivot['Count'] > 0]
+        truth_table = pivot.to_string(index=False)
             
     if st.button("🧹 Reiniciar"):
         st.session_state.messages = []
@@ -181,13 +170,13 @@ if not df.empty:
     st.title("🎹 ONErpm Data Analyst")
     
     if "messages" not in st.session_state:
-        st.session_state.messages = [{"role": "assistant", "content": "Hola. Columnas identificadas y mapeadas. ¿Qué analizamos?"}]
+        st.session_state.messages = [{"role": "assistant", "content": f"He limpiado y estandarizado {len(cols_clean)} columnas (Artistas, Géneros, Territorios, etc). ¿Qué quieres descubrir?"}]
 
     for msg in st.session_state.messages:
         with st.chat_message(msg["role"]):
             st.markdown(msg["content"])
 
-    if prompt := st.chat_input("Ej: Comparar Spotify Enero 2025 vs 2026"):
+    if prompt := st.chat_input("Ej: Top 5 Artistas en México en 2025"):
         st.session_state.messages.append({"role": "user", "content": prompt})
         with st.chat_message("user"):
             st.markdown(prompt)
@@ -197,24 +186,33 @@ if not df.empty:
             caja.info(f"🧠 Analizando...")
             
             try:
-                valid_dsps = sorted(df['DSP_CLEAN'].unique())
-                
+                # PROMPT UNIVERSAL
                 prompt_sys = f"""
-                Actúa como Experto en Python.
+                Actúa como Data Analyst Experto.
                 
-                TABLA DE VERDAD (DATOS REALES YA CALCULADOS):
-                {truth_context}
+                TABLA DE VERDAD (Referencia de Fechas/DSP):
+                {truth_table}
                 
-                DATOS (df):
-                - Columnas: `DSP_CLEAN`, `Year_Final`, `Month_Final`.
-                - DSPs: {valid_dsps}
+                DATOS DISPONIBLES (df):
+                - Columnas LIMPIAS (Úsalas para filtrar): {cols_clean}
+                - Fechas: `Year_Final`, `Month_Final`.
                 
                 USUARIO: "{prompt}"
                 
                 INSTRUCCIONES:
-                1. Filtra `DSP_CLEAN` con `normalize_text('Nombre')`.
-                2. Usa `plotly.express` (template='plotly_white').
-                3. KPIs con `st.metric`.
+                1. **Mapeo de Columnas**:
+                   - Si preguntan por ARTISTAS -> Usa `ARTIST_CLEAN`.
+                   - Si preguntan por GÉNERO -> Usa `GENRE_CLEAN`.
+                   - Si preguntan por TERRITORIO/PAÍS -> Usa `TERRITORY_CLEAN`.
+                   - Si preguntan por DSP -> Usa `DSP_CLEAN`.
+                
+                2. **Filtrado**:
+                   - Usa SIEMPRE `normalize_text('Valor')` para comparar.
+                   - Ejemplo: `df[df['TERRITORY_CLEAN'] == normalize_text('Mexico')]`.
+                
+                3. **Visualización**:
+                   - `plotly.express` (px) con `template='plotly_white'`.
+                   - Texto negro.
                 
                 Genera SOLO Python.
                 """
@@ -225,14 +223,13 @@ if not df.empty:
                 
                 caja.empty()
                 
-                # --- FIX SCOPE COMPLETO ---
                 exec_globals = {
                     "df": df, "pd": pd, "st": st, "px": px, "go": go,
                     "normalize_text": normalize_text, "unicodedata": unicodedata
                 }
                 exec(code, exec_globals)
                 
-                st.session_state.messages.append({"role": "assistant", "content": "✅ Hecho."})
+                st.session_state.messages.append({"role": "assistant", "content": "✅ Análisis completado."})
 
             except Exception as e:
                 caja.error(f"Error: {e}")

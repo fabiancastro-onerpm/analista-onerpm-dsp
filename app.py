@@ -45,7 +45,7 @@ else:
     genai.configure(api_key=st.secrets["GOOGLE_API_KEY"])
 
 # ==============================================================================
-# 2. MOTOR ETL (LIMPIEZA TOTAL DE 21 COLUMNAS)
+# 2. MOTOR ETL (LIMPIEZA TOTAL)
 # ==============================================================================
 def normalize_text(text):
     """LIMPIEZA PROFUNDA: Sin tildes, Mayúsculas, Sin espacios extra."""
@@ -60,11 +60,10 @@ def load_data():
     conn = st.connection("gsheets", type=GSheetsConnection)
     return conn.read(spreadsheet=URL_SHEET, worksheet="DSP COPY")
 
-@st.cache_data(ttl=3600, show_spinner="🧹 Ejecutando Limpieza en TODAS las columnas...")
+@st.cache_data(ttl=3600, show_spinner="🧹 Ejecutando Limpieza Total...")
 def clean_dataframe(df):
     try:
-        # 1. Estandarizar Encabezados (UPPERCASE, sin saltos de linea)
-        # Esto convierte "Inclusion Date \nMM/DD..." en "INCLUSION_DATE_MM_DD_YYYY"
+        # 1. Estandarizar Encabezados
         df.columns = [
             str(c).upper().replace('\n', ' ').replace('/', '_').replace('.', '').strip().replace(' ', '_') 
             for c in df.columns
@@ -73,17 +72,13 @@ def clean_dataframe(df):
         cleaned_cols_log = []
 
         # 2. BUCLE "FULL SPECTRUM": Limpiar TODAS las columnas de texto
-        # Identificamos columnas que son objeto (texto) o que queremos forzar como texto
         for col in df.columns:
-            # Ignoramos columnas que ya parecen ser conteos o índices internos
             if col not in ['YEAR', 'MONTH', 'WEEK', 'Q']: 
-                # Creamos versión _CLEAN
                 clean_name = f"{col}_CLEAN"
                 df[clean_name] = df[col].apply(lambda x: normalize_text(str(x)) if pd.notnull(x) else "UNKNOWN")
                 cleaned_cols_log.append(clean_name)
         
-        # 3. LÓGICA DE TIEMPO (CRÍTICA PARA EL CHIVATO)
-        # Buscamos columnas clave dentro de los nombres estandarizados
+        # 3. LÓGICA DE TIEMPO
         col_inc = next((c for c in df.columns if 'INCLUSION' in c), None)
         col_year = next((c for c in df.columns if c == 'YEAR'), None)
         col_month = next((c for c in df.columns if c == 'MONTH'), None)
@@ -97,7 +92,7 @@ def clean_dataframe(df):
             df['Year_Final'] = dt_inc.dt.year.fillna(0).astype(int)
             df['Month_Final'] = dt_inc.dt.month.fillna(0).astype(int)
             
-        # B. Rellenar con Manuales
+        # B. Relleno con Manuales
         if col_year:
             y_man = pd.to_numeric(df[col_year], errors='coerce').fillna(0).astype(int)
             df['Year_Final'] = df.apply(lambda x: y_man[x.name] if x['Year_Final'] == 0 else x['Year_Final'], axis=1)
@@ -116,7 +111,7 @@ def clean_dataframe(df):
             m_man = df[col_month].apply(get_month)
             df['Month_Final'] = df.apply(lambda x: m_man[x.name] if x['Month_Final'] == 0 else x['Month_Final'], axis=1)
 
-        # Filtro de Seguridad: Buscamos alguna columna que se parezca a DSP para filtrar basura
+        # Filtro de Seguridad
         col_dsp_clean = next((c for c in cleaned_cols_log if 'DSP' in c), None)
         if col_dsp_clean:
             df = df[df[col_dsp_clean] != 'UNKNOWN']
@@ -147,20 +142,19 @@ with st.sidebar:
     df, cols_clean = clean_dataframe(raw_df)
     
     if not df.empty:
-        # VISOR DE COLUMNAS DISPONIBLES (AHORA DEBERÍAN SER TODAS)
-        with st.expander(f"✅ {len(cols_clean)} Columnas Limpias"):
-            st.write(cols_clean)
-        
-        # TABLA DE VERDAD (AÑO | MES | DSP)
-        # Necesitamos saber cuál es la columna DSP limpia para agrupar
+        # Detectar columna DSP limpia para el resumen
         col_dsp_clean = next((c for c in cols_clean if 'DSP' in c), None)
         
         if col_dsp_clean:
+            # Resumen chivato
             pivot = df.groupby(['Year_Final', 'Month_Final', col_dsp_clean]).size().reset_index(name='Count')
             pivot = pivot[pivot['Count'] > 0]
             truth_table = pivot.to_string(index=False)
         else:
-            truth_table = "No se detectó columna DSP."
+            truth_table = "No DSP column found."
+            
+        with st.expander(f"✅ {len(cols_clean)} Columnas Limpias"):
+            st.write(cols_clean)
             
     if st.button("🧹 Reiniciar"):
         st.session_state.messages = []
@@ -173,13 +167,13 @@ if not df.empty:
     st.title("🎹 ONErpm Data Analyst")
     
     if "messages" not in st.session_state:
-        st.session_state.messages = [{"role": "assistant", "content": f"He procesado el 100% de las columnas. Puedo cruzar Artistas, Formatos, Origen, Business Unit... ¡lo que sea!"}]
+        st.session_state.messages = [{"role": "assistant", "content": f"He procesado {len(df)} registros. Pregúntame sobre cualquier columna (Artistas, Géneros, DSPs, etc)."}]
 
     for msg in st.session_state.messages:
         with st.chat_message(msg["role"]):
             st.markdown(msg["content"])
 
-    if prompt := st.chat_input("Ej: Distribución por Format en 2025"):
+    if prompt := st.chat_input("Ej: Diferencia Spotify Enero 2025 vs 2026"):
         st.session_state.messages.append({"role": "user", "content": prompt})
         with st.chat_message("user"):
             st.markdown(prompt)
@@ -189,35 +183,35 @@ if not df.empty:
             caja.info(f"🧠 Analizando...")
             
             try:
-                # PROMPT UNIVERSAL V17
+                # --- PROMPT ANTÍDOTO (Evita que escriba los datos a mano) ---
                 prompt_sys = f"""
-                Actúa como Data Analyst Experto.
+                Actúa como Data Analyst Experto en Python.
                 
                 TABLA DE VERDAD (Referencia de Fechas/DSP):
                 {truth_table}
                 
-                COLUMNAS LIMPIAS DISPONIBLES (df):
+                COLUMNAS LIMPIAS DISPONIBLES EN `df`:
                 {cols_clean}
-                (Nota: Todas estas columnas han sido normalizadas: MAYÚSCULAS, SIN TILDES).
                 
-                FECHAS CALCULADAS: `Year_Final`, `Month_Final`.
+                FECHAS: `Year_Final` (int), `Month_Final` (int).
                 
                 USUARIO: "{prompt}"
                 
-                INSTRUCCIONES:
-                1. **Identificar Columna**: Busca la columna _CLEAN que mejor coincida con lo que pide el usuario.
-                   - Ej: "Formato" -> `FORMAT_CLEAN`
-                   - Ej: "Origen" -> `ORIGIN_CLEAN`
-                   - Ej: "Business Unit" -> `BUSINESS_UNIT_CLEAN`
+                REGLAS CRÍTICAS DE CÓDIGO (¡NO LAS ROMPAS!):
+                1. **¡PROHIBIDO CREAR DATOS!**: 
+                   - NUNCA escribas `data = {{...}}`.
+                   - NUNCA uses `pd.DataFrame(...)` con datos manuales.
+                   - EL DATAFRAME `df` YA EXISTE EN MEMORIA. ÚSALO DIRECTAMENTE.
                 
-                2. **Filtrar**:
-                   - Usa SIEMPRE `normalize_text('Valor')` para comparar valores de texto.
+                2. **FILTRADO**:
+                   - Usa `normalize_text('Valor')` para comparar strings.
+                   - Si piden "Enero 2025", filtra `df[(df['Year_Final']==2025) & (df['Month_Final']==1)]`.
                 
-                3. **Visualizar**:
+                3. **VISUALIZACIÓN**:
                    - `plotly.express` (px) con `template='plotly_white'`.
-                   - Si piden conteos/totales, usa `st.metric`.
+                   - `st.metric` para KPIs.
                 
-                Genera SOLO Python.
+                Genera SOLO el código Python para ejecutar.
                 """
 
                 model = genai.GenerativeModel(sel_model)
@@ -236,5 +230,5 @@ if not df.empty:
 
             except Exception as e:
                 caja.error(f"Error: {e}")
-                with st.expander("Ver código"):
+                with st.expander("Ver código (con error)"):
                     st.code(code)

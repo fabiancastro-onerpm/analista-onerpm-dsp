@@ -12,7 +12,7 @@ import unicodedata
 import io
 
 # ==============================================================================
-# 1. ARQUITECTURA VISUAL (ESTILO DASHBOARD)
+# 1. CONFIGURACIÓN VISUAL
 # ==============================================================================
 st.set_page_config(
     page_title="ONErpm Enterprise Dashboard",
@@ -23,38 +23,21 @@ st.set_page_config(
 
 st.markdown("""
 <style>
-    /* Fondo limpio */
     .stApp { background-color: #FFFFFF !important; }
-    
-    /* Tipografía */
-    h1, h2, h3, p, div, span, li, label { 
-        color: #1F2937 !important; 
-        font-family: 'Segoe UI', sans-serif; 
-    }
-    
-    /* Métricas (KPI Cards) */
+    h1, h2, h3, p, div, span, li, label { color: #1F2937 !important; font-family: 'Segoe UI', sans-serif; }
     div[data-testid="stMetric"] { 
         background-color: #F8F9FA !important; 
         border: 1px solid #E9ECEF; 
-        border-left: 5px solid #005fcc; /* ONErpm Blue */
+        border-left: 5px solid #005fcc;
         border-radius: 8px; 
         padding: 15px;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.05);
     }
     div[data-testid="stMetricLabel"] { color: #6C757D !important; font-size: 0.9rem; font-weight: 700; }
     div[data-testid="stMetricValue"] { color: #212529 !important; font-size: 1.8rem; font-weight: 800; }
-    
-    /* Pestañas */
-    .stTabs [data-baseweb="tab-list"] { gap: 20px; }
-    .stTabs [data-baseweb="tab"] { height: 50px; white-space: pre-wrap; border-radius: 5px; color: #495057; }
-    .stTabs [aria-selected="true"] { background-color: #E7F1FF; color: #005fcc; font-weight: bold; }
-    
-    /* Chat */
     .stChatMessage { background-color: #F8F9FA !important; border: 1px solid #E9ECEF; }
 </style>
 """, unsafe_allow_html=True)
 
-# Validación API
 if "GOOGLE_API_KEY" not in st.secrets:
     st.error("🚨 CRÍTICO: Falta API Key en Secrets.")
     st.stop()
@@ -62,7 +45,7 @@ else:
     genai.configure(api_key=st.secrets["GOOGLE_API_KEY"])
 
 # ==============================================================================
-# 2. MOTOR DE DATOS (ETL ROBUSTO)
+# 2. MOTOR ETL
 # ==============================================================================
 def normalize_text(text):
     if not isinstance(text, str): return str(text)
@@ -76,21 +59,19 @@ def load_data():
     conn = st.connection("gsheets", type=GSheetsConnection)
     return conn.read(spreadsheet=URL_SHEET, worksheet="DSP COPY")
 
-@st.cache_data(ttl=3600, show_spinner="⚙️ Procesando Dashboard...")
+@st.cache_data(ttl=3600, show_spinner="⚙️ Procesando...")
 def clean_dataframe(df):
     try:
         df.columns = [str(c).upper().replace('\n', ' ').replace('/', '_').replace('.', '').strip().replace(' ', '_') for c in df.columns]
         cleaned_cols_log = []
         ignore_cols = ['YEAR', 'MONTH', 'WEEK', 'Q', 'INCLUSION_DATE', 'RELEASE_DATE']
         
-        # Limpieza de texto
         for col in df.columns:
             if col not in ignore_cols:
                 clean_name = f"{col}_CLEAN"
                 df[clean_name] = df[col].apply(lambda x: normalize_text(str(x)) if pd.notnull(x) else "UNKNOWN")
                 cleaned_cols_log.append(clean_name)
         
-        # Fechas
         col_inc = next((c for c in df.columns if 'INCLUSION' in c), None)
         col_year = next((c for c in df.columns if c == 'YEAR'), None)
         col_month = next((c for c in df.columns if c == 'MONTH'), None)
@@ -133,174 +114,152 @@ def get_valid_models():
     except: return []
 
 # ==============================================================================
-# 3. INTERFAZ LATERAL
+# 3. BARRA LATERAL
 # ==============================================================================
 with st.sidebar:
     st.image("https://upload.wikimedia.org/wikipedia/commons/thumb/1/19/Spotify_logo_without_text.svg/168px-Spotify_logo_without_text.svg.png", width=50)
     st.title("ONErpm Suite")
-    st.caption("v30.0 Enterprise Tabular")
+    st.caption("v31.0 Unstoppable")
     
     valid_models_list = get_valid_models()
-    if valid_models_list:
-        default_idx = 0
-        for i, m in enumerate(valid_models_list):
-            if "pro" in m: default_idx = i; break
-        sel_model = st.selectbox("Modelo IA:", valid_models_list, index=default_idx)
+    # Identificar modelos PRO y FLASH
+    pro_model = next((m for m in valid_models_list if "pro" in m), valid_models_list[0] if valid_models_list else None)
+    flash_model = next((m for m in valid_models_list if "flash" in m), valid_models_list[0] if valid_models_list else None)
+    
+    sel_model = st.selectbox("Modelo Principal:", valid_models_list, index=valid_models_list.index(pro_model) if pro_model else 0)
     
     st.divider()
-    
     raw_df = load_data()
     df, cols_clean = clean_dataframe(raw_df)
     
     if not df.empty:
-        # Chivato para la IA
         col_dsp = next((c for c in cols_clean if 'DSP' in c), None)
         pivot = df.groupby(['Year_Final', 'Month_Final', col_dsp]).size().reset_index(name='Count') if col_dsp else pd.DataFrame()
         pivot = pivot[pivot['Count'] > 0]
         truth_table = pivot.to_string(index=False)
+        st.success(f"Datos: {len(df):,}")
         
-        st.success(f"Base de Datos: {len(df):,} filas")
-        
-        # Exportador
         buffer = io.BytesIO()
         with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
             df.to_excel(writer, sheet_name='CleanData', index=False)
-        st.download_button("📥 Descargar Excel Limpio", buffer, "onerpm_clean.xlsx")
+        st.download_button("📥 Excel", buffer, "onerpm_clean.xlsx")
 
 # ==============================================================================
-# 4. ÁREA DE TRABAJO (TABS)
+# 4. DASHBOARD & CHAT (PROTOCOLOS DE EMERGENCIA)
 # ==============================================================================
 if not df.empty:
     
-    # ESTRUCTURA DE PESTAÑAS
-    tab_dash, tab_ai, tab_raw = st.tabs(["📊 Dashboard General (Review)", "🤖 Analista IA (Consultor)", "🔎 Datos Crudos"])
+    tab_dash, tab_ai, tab_raw = st.tabs(["📊 Dashboard", "🤖 Analista IA", "🔎 Datos"])
 
-    # --------------------------------------------------------------------------
-    # PESTAÑA 1: DASHBOARD (Python Puro - Sin cuotas)
-    # --------------------------------------------------------------------------
+    # --- TAB 1: DASHBOARD ---
     with tab_dash:
-        st.header("Resumen de Rendimiento Global")
-        st.caption("Vista general automática. No consume créditos de IA.")
-        
-        # 1. KPIs Superiores
-        total_rows = len(df)
+        st.header("Resumen de Datos")
+        total = len(df)
         year_max = df['Year_Final'].max()
-        year_prev = year_max - 1
+        count_ytd = len(df[df['Year_Final'] == year_max])
         
-        count_max = len(df[df['Year_Final'] == year_max])
-        count_prev = len(df[df['Year_Final'] == year_prev])
-        delta = count_max - count_prev
-        delta_pct = (delta / count_prev * 100) if count_prev > 0 else 0
+        c1, c2, c3 = st.columns(3)
+        c1.metric("Total Registros", f"{total:,}")
+        c2.metric(f"Año {year_max}", f"{count_ytd:,}")
+        c3.metric("DSP #1", df[col_dsp].mode()[0] if col_dsp else "N/A")
         
-        c1, c2, c3, c4 = st.columns(4)
-        c1.metric("Total Histórico", f"{total_rows:,}")
-        c2.metric(f"Destaques {year_prev}", f"{count_prev:,}")
-        c3.metric(f"Destaques {year_max} (YTD)", f"{count_max:,}", f"{delta_pct:.1f}% vs {year_prev}")
-        
-        top_dsp_val = df[col_dsp].mode()[0] if col_dsp else "N/A"
-        c4.metric("DSP Dominante", top_dsp_val)
-        
-        st.divider()
-        
-        # 2. Gráficas Principales
-        col_g1, col_g2 = st.columns(2)
-        
-        with col_g1:
-            st.subheader("Evolución Anual")
-            # Agrupación simple
-            year_data = df.groupby('Year_Final').size().reset_index(name='Total')
-            fig_year = px.bar(year_data, x='Year_Final', y='Total', template='plotly_white', text_auto=True, color='Total')
-            fig_year.update_layout(font=dict(color="black"))
-            st.plotly_chart(fig_year, use_container_width=True)
-            
-        with col_g2:
-            st.subheader("Market Share (Top 10 DSPs)")
+        g1, g2 = st.columns(2)
+        with g1:
+            st.caption("Histórico Anual")
+            yd = df.groupby('Year_Final').size().reset_index(name='Total')
+            st.plotly_chart(px.bar(yd, x='Year_Final', y='Total', template='plotly_white', text_auto=True), use_container_width=True)
+        with g2:
+            st.caption("Top 5 DSPs")
             if col_dsp:
-                dsp_data = df[col_dsp].value_counts().nlargest(10).reset_index()
-                dsp_data.columns = ['DSP', 'Total']
-                fig_pie = px.pie(dsp_data, names='DSP', values='Total', hole=0.4, template='plotly_white')
-                st.plotly_chart(fig_pie, use_container_width=True)
+                dd = df[col_dsp].value_counts().nlargest(5).reset_index()
+                dd.columns = ['DSP', 'Total']
+                st.plotly_chart(px.pie(dd, names='DSP', values='Total', hole=0.5, template='plotly_white'), use_container_width=True)
 
-    # --------------------------------------------------------------------------
-    # PESTAÑA 2: ANALISTA IA (Con espera automática)
-    # --------------------------------------------------------------------------
+    # --- TAB 2: CHAT CON SUPERVIVENCIA ---
     with tab_ai:
-        st.header("Consultor Estratégico & Predictivo")
-        st.info("💡 Este módulo usa IA para cálculos complejos, proyecciones y redacción de informes.")
+        st.header("Consultor Inteligente")
+        st.info("💡 Este chat cambia de modelo automáticamente si detecta sobrecarga en Google.")
         
         if "messages" not in st.session_state:
-            st.session_state.messages = [{"role": "assistant", "content": "Analista Senior listo. Puedo proyectar el 2026 o comparar periodos específicos. ¿Qué necesitas?"}]
+            st.session_state.messages = [{"role": "assistant", "content": "Analista listo. Si un modelo falla, usaré otro. ¿Qué necesitas?"}]
 
         for msg in st.session_state.messages:
             with st.chat_message(msg["role"]):
                 st.markdown(msg["content"])
 
-        if prompt := st.chat_input("Ej: Diferencia Spotify Ene 2025 vs 2026 y proyecciones Q1"):
+        if prompt := st.chat_input("Ej: Proyección Spotify Q1 2026"):
             st.session_state.messages.append({"role": "user", "content": prompt})
             with st.chat_message("user"):
                 st.markdown(prompt)
 
             with st.chat_message("assistant"):
                 caja = st.empty()
-                caja.info(f"🧠 Analizando con {sel_model}...")
                 
-                # --- SISTEMA DE ESPERA AUTOMÁTICA (Anti-Error 429) ---
-                def call_ai_patient(prompt_text, model_name):
-                    max_retries = 2
-                    for i in range(max_retries):
-                        try:
-                            model = genai.GenerativeModel(model_name)
-                            return model.generate_content(prompt_text)
-                        except Exception as e:
-                            error_str = str(e)
-                            if "429" in error_str or "Quota" in error_str:
-                                wait_time = 65 
-                                caja.warning(f"⏳ Límite de tráfico alcanzado. Esperando {wait_time}s para reanudar...")
-                                bar = st.progress(0)
-                                for t in range(wait_time):
-                                    time.sleep(1)
-                                    bar.progress((t+1)/wait_time)
-                                bar.empty()
-                                caja.info("✅ Reanudando análisis...")
-                                continue
-                            else:
-                                raise e
-                    raise Exception("Error de conexión persistente.")
+                # --- FUNCIÓN DE LLAMADA ULTRARRESILIENTE ---
+                def call_ai_ultimate(prompt_text, primary_model_name, fallback_model_name):
+                    # INTENTO 1: Modelo Principal (Pro)
+                    try:
+                        caja.info(f"🧠 Intentando con {primary_model_name}...")
+                        return genai.GenerativeModel(primary_model_name).generate_content(prompt_text)
+                    except Exception as e:
+                        error_str = str(e)
+                        
+                        # INTENTO 2: Espera larga + Reintento Principal
+                        if "429" in error_str or "Quota" in error_str or "503" in error_str:
+                            wait_time = 70 # 70 segundos para asegurar
+                            caja.warning(f"⏳ Google saturado. Esperando {wait_time}s para reintentar...")
+                            
+                            bar = st.progress(0)
+                            for t in range(wait_time):
+                                time.sleep(1)
+                                bar.progress((t+1)/wait_time)
+                            bar.empty()
+                            
+                            try:
+                                caja.info(f"🔄 Reintentando con {primary_model_name}...")
+                                return genai.GenerativeModel(primary_model_name).generate_content(prompt_text)
+                            except Exception as e2:
+                                # INTENTO 3: FALLBACK A FLASH (MODELO LIGERO)
+                                caja.error(f"⚠️ El modelo principal falló de nuevo. Cambiando a EMERGENCIA ({fallback_model_name})...")
+                                time.sleep(5)
+                                return genai.GenerativeModel(fallback_model_name).generate_content(prompt_text)
+                        
+                        raise e # Si no es error de cuota, lanzar normal
 
                 code = None
                 try:
-                    # PROMPT DE ALTO NIVEL (Corregido)
+                    # PROMPT TÉCNICO
                     prompt_sys = f"""
-                    Eres un Data Scientist Senior experto en Python.
+                    Eres un Data Scientist Senior.
                     
-                    OBJETIVO:
-                    Crear un reporte visual y narrativo en Streamlit.
-                    
-                    DATOS DISPONIBLES (Ya en memoria):
-                    - DataFrame: `df`
+                    DATOS DISPONIBLES (En memoria):
+                    - `df`: DataFrame completo.
                     - Columnas Texto: {cols_clean}
                     - Fechas: Year_Final, Month_Final
                     - RESUMEN: {truth_table}
                     
-                    USUARIO: "{prompt}"
+                    SOLICITUD: "{prompt}"
                     
-                    REGLAS DE PROGRAMACIÓN (CRÍTICAS):
-                    1. **FILTRADO**: 
-                       - INCORRECTO: `normalize_text(df['COL'])` -> Error de series.
-                       - CORRECTO: `df['COL_CLEAN'] == normalize_text('Valor')`.
+                    REGLAS OBLIGATORIAS (Evita errores de sintaxis):
+                    1. **Filtrar Texto**: Usa `df['COL_CLEAN'] == normalize_text('Valor')`.
+                       - NUNCA uses `normalize_text(df['col'])` -> Eso rompe el código.
                     
-                    2. **MATEMÁTICAS**:
-                       - Si piden proyecciones: Usa `LinearRegression` con datos históricos.
-                       - Agrupa por fecha, entrena y predice.
+                    2. **Proyecciones**: 
+                       - Usa `LinearRegression`.
+                       - Entrena con histórico, predice futuro.
+                       - No uses columna 'Count' (usa len).
                     
-                    3. **OUTPUT**:
-                       - Usa `st.markdown` para escribir el análisis ejecutivo al final.
-                       - Usa gráficas interactivas (`plotly`).
+                    3. **Reporte**:
+                       - Usa `st.markdown` para explicar resultados.
+                       - Sé analítico ("Crecimiento del X%...").
                     
-                    Genera SOLO el código Python.
+                    Genera SOLO código Python.
                     """
 
-                    response = call_ai_patient(prompt_sys, sel_model)
+                    # Usamos el modelo Flash detectado como respaldo
+                    fallback = flash_model if flash_model else sel_model 
+                    
+                    response = call_ai_ultimate(prompt_sys, sel_model, fallback)
                     code = response.text.replace("```python", "").replace("```", "").strip()
                     
                     caja.empty()
@@ -311,16 +270,13 @@ if not df.empty:
                         "normalize_text": normalize_text, "unicodedata": unicodedata, "io": io
                     }
                     exec(code, exec_globals)
-                    st.session_state.messages.append({"role": "assistant", "content": "✅ Reporte generado."})
+                    st.session_state.messages.append({"role": "assistant", "content": "✅ Hecho."})
 
                 except Exception as e:
-                    caja.error(f"Error: {e}")
+                    caja.error(f"Error Final: {e}")
                     if code:
-                        with st.expander("Ver código"): st.code(code)
+                        with st.expander("Código Fallido"): st.code(code)
 
-    # --------------------------------------------------------------------------
-    # PESTAÑA 3: DATOS CRUDOS
-    # --------------------------------------------------------------------------
     with tab_raw:
-        st.header("Inspector de Datos")
-        st.dataframe(df, use_container_width=True)
+        st.header("Datos Crudos")
+        st.dataframe(df)

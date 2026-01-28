@@ -9,7 +9,7 @@ import re
 import unicodedata
 
 # ==============================================================================
-# 1. CONFIGURACIÓN VISUAL (ALTO CONTRASTE)
+# 1. CONFIGURACIÓN VISUAL (LEGIBILIDAD TOTAL)
 # ==============================================================================
 st.set_page_config(
     page_title="ONErpm Data Analyst",
@@ -45,10 +45,10 @@ else:
     genai.configure(api_key=st.secrets["GOOGLE_API_KEY"])
 
 # ==============================================================================
-# 2. MOTOR ETL (LIMPIEZA TOTAL)
+# 2. MOTOR ETL (GLOBAL SCOPE)
 # ==============================================================================
 def normalize_text(text):
-    """LIMPIEZA PROFUNDA: Sin tildes, Mayúsculas, Sin espacios extra."""
+    """Función Global: Limpia texto (Sin tildes, Mayúsculas)."""
     if not isinstance(text, str): return str(text)
     text = "".join(c for c in unicodedata.normalize('NFKD', text) if not unicodedata.combining(c))
     return text.upper().strip()
@@ -60,10 +60,10 @@ def load_data():
     conn = st.connection("gsheets", type=GSheetsConnection)
     return conn.read(spreadsheet=URL_SHEET, worksheet="DSP COPY")
 
-@st.cache_data(ttl=3600, show_spinner="🧹 Ejecutando Limpieza Total...")
+@st.cache_data(ttl=3600, show_spinner="🧹 Limpiando base de datos...")
 def clean_dataframe(df):
     try:
-        # 1. Estandarizar Encabezados
+        # 1. Headers
         df.columns = [
             str(c).upper().replace('\n', ' ').replace('/', '_').replace('.', '').strip().replace(' ', '_') 
             for c in df.columns
@@ -71,14 +71,14 @@ def clean_dataframe(df):
         
         cleaned_cols_log = []
 
-        # 2. BUCLE "FULL SPECTRUM": Limpiar TODAS las columnas de texto
+        # 2. Limpieza Universal de Texto
         for col in df.columns:
             if col not in ['YEAR', 'MONTH', 'WEEK', 'Q']: 
                 clean_name = f"{col}_CLEAN"
                 df[clean_name] = df[col].apply(lambda x: normalize_text(str(x)) if pd.notnull(x) else "UNKNOWN")
                 cleaned_cols_log.append(clean_name)
         
-        # 3. LÓGICA DE TIEMPO
+        # 3. Fechas
         col_inc = next((c for c in df.columns if 'INCLUSION' in c), None)
         col_year = next((c for c in df.columns if c == 'YEAR'), None)
         col_month = next((c for c in df.columns if c == 'MONTH'), None)
@@ -86,13 +86,11 @@ def clean_dataframe(df):
         df['Year_Final'] = 0
         df['Month_Final'] = 0
         
-        # A. Intentar fecha de inclusión
         if col_inc:
             dt_inc = pd.to_datetime(df[col_inc], errors='coerce')
             df['Year_Final'] = dt_inc.dt.year.fillna(0).astype(int)
             df['Month_Final'] = dt_inc.dt.month.fillna(0).astype(int)
             
-        # B. Relleno con Manuales
         if col_year:
             y_man = pd.to_numeric(df[col_year], errors='coerce').fillna(0).astype(int)
             df['Year_Final'] = df.apply(lambda x: y_man[x.name] if x['Year_Final'] == 0 else x['Year_Final'], axis=1)
@@ -112,9 +110,8 @@ def clean_dataframe(df):
             df['Month_Final'] = df.apply(lambda x: m_man[x.name] if x['Month_Final'] == 0 else x['Month_Final'], axis=1)
 
         # Filtro de Seguridad
-        col_dsp_clean = next((c for c in cleaned_cols_log if 'DSP' in c), None)
-        if col_dsp_clean:
-            df = df[df[col_dsp_clean] != 'UNKNOWN']
+        col_dsp = next((c for c in cleaned_cols_log if 'DSP' in c), None)
+        if col_dsp: df = df[df[col_dsp] != 'UNKNOWN']
 
         return df, cleaned_cols_log
 
@@ -142,19 +139,15 @@ with st.sidebar:
     df, cols_clean = clean_dataframe(raw_df)
     
     if not df.empty:
-        # Detectar columna DSP limpia para el resumen
+        # Detectar columna DSP para el resumen
         col_dsp_clean = next((c for c in cols_clean if 'DSP' in c), None)
         
         if col_dsp_clean:
-            # Resumen chivato
             pivot = df.groupby(['Year_Final', 'Month_Final', col_dsp_clean]).size().reset_index(name='Count')
             pivot = pivot[pivot['Count'] > 0]
             truth_table = pivot.to_string(index=False)
         else:
-            truth_table = "No DSP column found."
-            
-        with st.expander(f"✅ {len(cols_clean)} Columnas Limpias"):
-            st.write(cols_clean)
+            truth_table = "No DSP column."
             
     if st.button("🧹 Reiniciar"):
         st.session_state.messages = []
@@ -167,7 +160,7 @@ if not df.empty:
     st.title("🎹 ONErpm Data Analyst")
     
     if "messages" not in st.session_state:
-        st.session_state.messages = [{"role": "assistant", "content": f"He procesado {len(df)} registros. Pregúntame sobre cualquier columna (Artistas, Géneros, DSPs, etc)."}]
+        st.session_state.messages = [{"role": "assistant", "content": "Listo. He corregido mi lógica de conteo. ¿Qué analizamos?"}]
 
     for msg in st.session_state.messages:
         with st.chat_message(msg["role"]):
@@ -183,35 +176,37 @@ if not df.empty:
             caja.info(f"🧠 Analizando...")
             
             try:
-                # --- PROMPT ANTÍDOTO (Evita que escriba los datos a mano) ---
+                # --- PROMPT V19: BLOQUEO DE ERROR 'COUNT' ---
                 prompt_sys = f"""
-                Actúa como Data Analyst Experto en Python.
+                Actúa como Data Analyst Python.
                 
-                TABLA DE VERDAD (Referencia de Fechas/DSP):
+                TABLA DE VERDAD (Referencia):
                 {truth_table}
                 
-                COLUMNAS LIMPIAS DISPONIBLES EN `df`:
-                {cols_clean}
-                
-                FECHAS: `Year_Final` (int), `Month_Final` (int).
+                DATOS REALES (df):
+                - Columnas LIMPIAS: {cols_clean}
+                - Fechas: `Year_Final`, `Month_Final`.
                 
                 USUARIO: "{prompt}"
                 
-                REGLAS CRÍTICAS DE CÓDIGO (¡NO LAS ROMPAS!):
-                1. **¡PROHIBIDO CREAR DATOS!**: 
-                   - NUNCA escribas `data = {{...}}`.
-                   - NUNCA uses `pd.DataFrame(...)` con datos manuales.
-                   - EL DATAFRAME `df` YA EXISTE EN MEMORIA. ÚSALO DIRECTAMENTE.
+                REGLAS DE ORO (ESTRUCTURA DE DATOS):
+                1. **ERROR PROHIBIDO**: El DataFrame `df` **NO** tiene una columna llamada 'Count'.
+                   - 'Count' solo existe en la tabla de verdad de arriba.
+                   - En `df`, cada fila es 1 destaque.
                 
-                2. **FILTRADO**:
-                   - Usa `normalize_text('Valor')` para comparar strings.
-                   - Si piden "Enero 2025", filtra `df[(df['Year_Final']==2025) & (df['Month_Final']==1)]`.
+                2. **CÓMO CONTAR (OBLIGATORIO)**:
+                   - Para contar registros, usa SIEMPRE: `cantidad = len(df_filtrado)`.
+                   - JAMÁS uses `.sum()` sobre una columna inexistente.
                 
-                3. **VISUALIZACIÓN**:
-                   - `plotly.express` (px) con `template='plotly_white'`.
-                   - `st.metric` para KPIs.
+                3. **FILTRADO**:
+                   - Usa `normalize_text('Texto')` para comparar.
+                   - Ejemplo: `df[df['DSP_CLEAN'] == normalize_text('Spotify')]`.
                 
-                Genera SOLO el código Python para ejecutar.
+                4. **VISUALIZACIÓN**:
+                   - `plotly.express` con `template='plotly_white'`.
+                   - `st.metric` para resultados numéricos.
+                
+                Genera SOLO código Python.
                 """
 
                 model = genai.GenerativeModel(sel_model)
@@ -220,6 +215,7 @@ if not df.empty:
                 
                 caja.empty()
                 
+                # Pasamos normalize_text como GLOBAL para evitar errores de scope
                 exec_globals = {
                     "df": df, "pd": pd, "st": st, "px": px, "go": go,
                     "normalize_text": normalize_text, "unicodedata": unicodedata
@@ -230,5 +226,5 @@ if not df.empty:
 
             except Exception as e:
                 caja.error(f"Error: {e}")
-                with st.expander("Ver código (con error)"):
+                with st.expander("Ver código generado"):
                     st.code(code)

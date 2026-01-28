@@ -8,7 +8,7 @@ import time
 import re
 
 # ==============================================================================
-# 1. CONFIGURACIÓN VISUAL
+# 1. CONFIGURACIÓN VISUAL (CORREGIDA PARA LEERSE SIEMPRE)
 # ==============================================================================
 st.set_page_config(
     page_title="ONErpm Data Analyst",
@@ -17,21 +17,49 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Estilos CSS
+# Estilos CSS - AHORA FORZAMOS EL COLOR DE TEXTO A NEGRO
 st.markdown("""
 <style>
-    .stApp { background-color: #F8F9FA; }
-    div[data-testid="stMetric"] {
-        background-color: #FFFFFF;
-        border: 1px solid #E5E7EB;
-        padding: 10px;
-        border-radius: 8px;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+    /* Fondo General */
+    .stApp { 
+        background-color: #F0F2F6; 
     }
+    
+    /* Títulos y Encabezados - Azul Corporativo */
+    h1, h2, h3 { 
+        color: #004E92 !important; 
+        font-family: 'Helvetica Neue', sans-serif;
+    }
+    
+    /* Tarjetas de Métricas (Números grandes) */
+    div[data-testid="stMetric"] {
+        background-color: #FFFFFF !important;
+        border: 1px solid #D1D5DB;
+        padding: 15px;
+        border-radius: 10px;
+        box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+    }
+    
+    /* Texto de las Métricas (Forzar a Negro/Gris Oscuro) */
+    div[data-testid="stMetricLabel"] {
+        color: #4B5563 !important; /* Gris Oscuro */
+        font-weight: bold;
+    }
+    div[data-testid="stMetricValue"] {
+        color: #000000 !important; /* Negro Puro */
+    }
+
+    /* Burbujas del Chat */
     .stChatMessage {
-        background-color: #FFFFFF;
+        background-color: #FFFFFF !important;
         border: 1px solid #E5E7EB;
         border-radius: 12px;
+        color: #000000 !important; /* Texto Negro siempre */
+    }
+    
+    /* Texto dentro del chat (Usuario y Asistente) */
+    .stMarkdown p {
+        color: #1F2937 !important; /* Gris muy oscuro para lectura */
     }
 </style>
 """, unsafe_allow_html=True)
@@ -52,14 +80,13 @@ URL_SHEET = "https://docs.google.com/spreadsheets/d/10y2YowTEgQYdWxs6c8D0fgJDDwG
 @st.cache_data(ttl=3600, show_spinner="📡 Descargando datos de Google Sheets...")
 def fetch_raw_data():
     conn = st.connection("gsheets", type=GSheetsConnection)
-    # Leemos sin procesar nada para ser rápidos
     return conn.read(spreadsheet=URL_SHEET, worksheet="DSP COPY")
 
-# FASE 2: LIMPIEZA Y PROCESAMIENTO (Cacheada por 1 hora)
-@st.cache_data(ttl=3600, show_spinner="🧹 Limpiando y organizando datos...")
+# FASE 2: LIMPIEZA Y PROCESAMIENTO
+@st.cache_data(ttl=3600, show_spinner="🧹 Limpiando datos...")
 def process_data(df):
     try:
-        # 1. Limpieza de columnas (Vectorizada = Rápida)
+        # 1. Limpieza de columnas
         df.columns = df.columns.astype(str).str.replace(r'\n', ' ', regex=True).str.strip()
         
         # 2. Normalización de Texto
@@ -68,29 +95,27 @@ def process_data(df):
             if c in df.columns:
                 df[f"{c}_CLEAN"] = df[c].astype(str).fillna("UNKNOWN").str.strip().str.upper()
         
-        # 3. Fechas (Inclusion / Release)
-        # Convertimos todo lo que parezca fecha de una vez
+        # 3. Fechas
         for col in df.columns:
             if 'Inclusion' in col or 'Release' in col:
                 df[col] = pd.to_datetime(df[col], errors='coerce')
         
-        # 4. Cálculo de AÑO y MES (Vectorizado)
-        # Priorizamos Inclusion Date, luego Year manual
+        # 4. Cálculo de AÑO y MES
         col_fecha = next((c for c in df.columns if 'Inclusion' in c), None)
         
         if col_fecha:
-            # Extraer Año y Mes de la fecha real
             df['Year_Final'] = df[col_fecha].dt.year.fillna(0).astype(int)
             df['Month_Final'] = df[col_fecha].dt.month.fillna(0).astype(int)
             
-            # Si la fecha dio 0 (era NaT), intentamos usar la columna manual
+            # Fallback manual si la fecha falla
             if 'Year' in df.columns:
                 df['Year_Manual'] = pd.to_numeric(df['Year'], errors='coerce').fillna(0).astype(int)
                 df['Year_Final'] = df.apply(lambda x: x['Year_Manual'] if x['Year_Final'] == 0 else x['Year_Final'], axis=1)
                 
             if 'Month' in df.columns:
-                # Mapa de meses manuales
-                mapa_mes = {'ENERO':1, 'ENE':1, 'JANUARY':1, 'JAN':1, '1':1, '01':1, 'FEBRERO':2, 'FEB':2, '02':2, '2':2} # (Abreviado para velocidad, la IA entiende el resto)
+                mapa_mes = {'ENERO':1, 'ENE':1, 'JANUARY':1, 'JAN':1, '1':1, '01':1, 'FEBRERO':2, 'FEB':2, '02':2, '2':2,
+                            'MARZO':3, 'MAR':3, '03':3, '3':3, 'ABRIL':4, 'ABR':4, '04':4, '4':4,
+                            'MAYO':5, 'MAY':5, '05':5, '5':5, 'JUNIO':6, 'JUN':6, '06':6, '6':6}
                 def quick_month(x):
                     s = str(x).strip().upper()
                     return int(s) if s.isdigit() else mapa_mes.get(s, 0)
@@ -99,11 +124,10 @@ def process_data(df):
                 df['Month_Final'] = df.apply(lambda x: x['Month_Manual'] if x['Month_Final'] == 0 else x['Month_Final'], axis=1)
         
         else:
-            # Si no hay Inclusion Date, usamos manuales directo
             df['Year_Final'] = pd.to_numeric(df['Year'], errors='coerce').fillna(0).astype(int) if 'Year' in df.columns else 0
             df['Month_Final'] = pd.to_numeric(df['Month'], errors='coerce').fillna(0).astype(int) if 'Month' in df.columns else 0
 
-        # Filtro de basura (Filas vacías)
+        # Filtro de seguridad
         df = df[df['DSP_CLEAN'] != 'UNKNOWN']
         
         return df
@@ -112,13 +136,12 @@ def process_data(df):
         return pd.DataFrame()
 
 # ==============================================================================
-# 3. CARGA CON DIAGNÓSTICO
+# 3. CARGA CON BARRA DE PROGRESO
 # ==============================================================================
 with st.sidebar:
     st.image("https://upload.wikimedia.org/wikipedia/commons/thumb/1/19/Spotify_logo_without_text.svg/168px-Spotify_logo_without_text.svg.png", width=40)
     st.title("Panel de Control")
     
-    # Estado de Carga
     status_text = st.empty()
     bar = st.progress(0)
     
@@ -195,11 +218,8 @@ if not df.empty:
                 Genera SOLO código Python.
                 """
 
-                # Selección de modelo
-                model = genai.GenerativeModel("models/gemini-1.5-flash") # Flash es más rápido y estable
+                model = genai.GenerativeModel("models/gemini-1.5-flash")
                 response = model.generate_content(prompt_sys)
-                
-                # Limpieza
                 clean_res = response.text.replace("```python", "").replace("```", "").strip()
                 
                 caja.empty()

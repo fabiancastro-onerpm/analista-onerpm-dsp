@@ -30,14 +30,12 @@ st.markdown("""
         font-family: 'Helvetica Neue', sans-serif;
     }
     
-    /* Cajas de Información/Alerta (Azules/Verdes/Rojas) */
+    /* Cajas de Información/Alerta */
     .stAlert {
-        background-color: #E6F3FF !important; /* Fondo Azul Claro */
+        background-color: #E6F3FF !important; 
         border: 1px solid #004E92 !important;
     }
-    .stAlert p, .stAlert div {
-        color: #000000 !important; /* Texto NEGRO en alertas */
-    }
+    .stAlert p, .stAlert div { color: #000000 !important; }
 
     /* Tarjetas de Métricas */
     div[data-testid="stMetric"] {
@@ -77,6 +75,7 @@ else:
 URL_SHEET = "https://docs.google.com/spreadsheets/d/10y2YowTEgQYdWxs6c8D0fgJDDwGIT8_wyH0rQbERgG0/edit?gid=1919114384#gid=1919114384"
 
 def remove_accents(input_str):
+    """Normaliza texto eliminando tildes (Á -> A)."""
     if not isinstance(input_str, str): return str(input_str)
     nfkd = unicodedata.normalize('NFKD', input_str)
     return "".join([c for c in nfkd if not unicodedata.combining(c)])
@@ -103,7 +102,7 @@ def clean_data(df):
             if 'Inclusion' in col or 'Release' in col:
                 df[col] = pd.to_datetime(df[col], errors='coerce')
         
-        # 4. Lógica de Año/Mes (Robusta)
+        # 4. Lógica de Año/Mes
         col_fecha = next((c for c in df.columns if 'Inclusion' in c), None)
         
         if col_fecha:
@@ -167,30 +166,27 @@ with st.sidebar:
         st.rerun()
 
 # --- GENERADOR DE TABLA DE VERDAD (Python Puro) ---
-# Creamos un resumen de TODOS los años y TODOS los DSPs para pasárselo a la IA.
-# Así sabe que 2024 existe y cuántos tiene.
 if not df.empty:
     pivot_truth = df.groupby(['Year_Final', 'DSP_CLEAN']).size().reset_index(name='Count')
-    # Convertimos esto a texto para el Prompt
     truth_text = pivot_truth.to_string(index=False)
     
     with st.expander("Ver Resumen de Verdad (Python)"):
         st.text(truth_text)
 
 # ==============================================================================
-# 4. CHAT CON CONTEXTO COMPLETO
+# 4. CHAT CON CONTEXTO COMPLETO Y FIX DE SCOPE
 # ==============================================================================
 if not df.empty:
     st.title("🎹 ONErpm Data Analyst")
     
     if "messages" not in st.session_state:
-        st.session_state.messages = [{"role": "assistant", "content": "Hola. Tengo el reporte completo de todos los años (2024, 2025, 2026, etc). Pregúntame lo que sea."}]
+        st.session_state.messages = [{"role": "assistant", "content": "Hola. Base de datos cargada correctamente. ¿Qué analizamos hoy?"}]
 
     for msg in st.session_state.messages:
         with st.chat_message(msg["role"]):
             st.markdown(msg["content"])
 
-    if prompt := st.chat_input("Ej: Comparativa Spotify 2024 vs 2025"):
+    if prompt := st.chat_input("Ej: Comparativa Spotify 2025 vs 2026"):
         st.session_state.messages.append({"role": "user", "content": prompt})
         with st.chat_message("user"):
             st.markdown(prompt)
@@ -200,26 +196,26 @@ if not df.empty:
             caja.info(f"🧠 Analizando con {sel_model}...")
             
             try:
-                # INYECCIÓN DE VERDAD MASIVA
-                # Le damos a la IA la tabla resumen completa. Ya no puede decir "Asumo 0".
-                
+                # Prompt con Verdad Inyectada
                 prompt_sys = f"""
                 Actúa como Senior Data Analyst (Python Expert).
                 
-                TABLA DE VERDAD (DATOS PRE-CALCULADOS POR PYTHON):
+                TABLA DE VERDAD (Referencia Absoluta):
                 {truth_text}
                 
                 INSTRUCCIONES:
                 1. El usuario pregunta: "{prompt}"
-                2. Mira la TABLA DE VERDAD arriba. Si el usuario pide 2024, busca 2024 en esa tabla.
-                   - Si la tabla dice 'SPOTIFY 2024 120', entonces hay 120. NO ASUMAS 0.
+                2. Mira la TABLA DE VERDAD. Si piden 2024, usa el dato de la tabla.
                 
-                REGLAS DE CÓDIGO (VISUALIZACIÓN):
-                1. Usa `df` (el DataFrame completo está disponible).
-                2. Filtra `DSP_CLEAN` usando `remove_accents(str(x)).upper()`.
-                3. GRAFICOS: Usa `plotly.express`.
-                   - IMPORTANTE: Configura `template='plotly_white'` para que se vea bien.
-                   - Fuerza texto negro: `fig.update_layout(font=dict(color='black'))`.
+                REGLAS DE CÓDIGO:
+                1. Usa `df` (DataFrame disponible).
+                2. Para filtrar DSP, usa SIEMPRE: `df[df['DSP_CLEAN'] == remove_accents('Nombre').upper()]`.
+                   - La función `remove_accents` YA EXISTE en tu entorno. Úsala.
+                3. GRAFICOS: 
+                   - Usa `plotly.express` (px).
+                   - Si piden "torta" o "distribución", usa `px.pie`.
+                   - Si piden comparación, usa `px.bar` con `text_auto=True`.
+                   - Configura `template='plotly_white'`.
                 4. KPIS: Usa `st.metric`.
                 
                 Genera SOLO código Python.
@@ -230,10 +226,19 @@ if not df.empty:
                 code = response.text.replace("```python", "").replace("```", "").strip()
                 
                 caja.empty()
-                local_vars = {"df": df, "pd": pd, "st": st, "px": px, "go": go, "remove_accents": remove_accents}
-                exec(code, {}, local_vars)
+                
+                # --- FIX CRÍTICO: Pasamos todo en 'globals' para que las funciones internas vean remove_accents ---
+                exec_globals = {
+                    "df": df, "pd": pd, "st": st, "px": px, "go": go, 
+                    "remove_accents": remove_accents, "unicodedata": unicodedata
+                }
+                
+                # Ejecutamos pasando el diccionario como globals (2do argumento)
+                exec(code, exec_globals)
                 
                 st.session_state.messages.append({"role": "assistant", "content": "✅ Análisis completado."})
 
             except Exception as e:
                 caja.error(f"Error: {e}")
+                with st.expander("Ver detalle"):
+                    st.code(code)

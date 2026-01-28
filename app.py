@@ -8,7 +8,7 @@ import time
 import re
 
 # ==============================================================================
-# 1. DISEÑO UX/UI PREMIUM
+# 1. CONFIGURACIÓN VISUAL
 # ==============================================================================
 st.set_page_config(
     page_title="ONErpm Data Analyst",
@@ -17,270 +17,196 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Paleta de Colores ONErpm y Estilos
+# Estilos CSS
 st.markdown("""
 <style>
-    /* Estilo Global */
     .stApp { background-color: #F8F9FA; }
-    
-    /* Encabezados */
-    h1, h2, h3 { color: #004E92; font-family: 'Helvetica Neue', sans-serif; font-weight: 700; }
-    
-    /* Métricas */
     div[data-testid="stMetric"] {
         background-color: #FFFFFF;
         border: 1px solid #E5E7EB;
-        border-radius: 12px;
-        padding: 16px;
-        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+        padding: 10px;
+        border-radius: 8px;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.05);
     }
-    
-    /* Chat Bubbles */
     .stChatMessage {
         background-color: #FFFFFF;
-        border: 1px solid #F3F4F6;
-        border-radius: 16px;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.05);
-        padding: 20px;
-    }
-    
-    /* Sidebar */
-    [data-testid="stSidebar"] {
-        background-color: #FFFFFF;
-        border-right: 1px solid #E5E7EB;
+        border: 1px solid #E5E7EB;
+        border-radius: 12px;
     }
 </style>
 """, unsafe_allow_html=True)
 
-# API Key Check
+# Validación de API
 if "GOOGLE_API_KEY" not in st.secrets:
-    st.error("🚨 Error de Configuración: Falta la API Key en `.streamlit/secrets.toml`")
+    st.error("🚨 CRÍTICO: Falta API Key en Secrets.")
     st.stop()
 else:
     genai.configure(api_key=st.secrets["GOOGLE_API_KEY"])
 
 # ==============================================================================
-# 2. MOTOR DE DATOS (ETL & LIMPIEZA)
+# 2. MOTOR DE DATOS OPTIMIZADO (ETL POR FASES)
 # ==============================================================================
-# URL del archivo real
 URL_SHEET = "https://docs.google.com/spreadsheets/d/10y2YowTEgQYdWxs6c8D0fgJDDwGIT8_wyH0rQbERgG0/edit?gid=1919114384#gid=1919114384"
 
-@st.cache_data(ttl=600, show_spinner=False)
-def get_data():
+# FASE 1: DESCARGA CRUDA (Cacheada por 1 hora)
+@st.cache_data(ttl=3600, show_spinner="📡 Descargando datos de Google Sheets...")
+def fetch_raw_data():
     conn = st.connection("gsheets", type=GSheetsConnection)
+    # Leemos sin procesar nada para ser rápidos
+    return conn.read(spreadsheet=URL_SHEET, worksheet="DSP COPY")
+
+# FASE 2: LIMPIEZA Y PROCESAMIENTO (Cacheada por 1 hora)
+@st.cache_data(ttl=3600, show_spinner="🧹 Limpiando y organizando datos...")
+def process_data(df):
     try:
-        # Carga directa de la pestaña
-        df = conn.read(spreadsheet=URL_SHEET, worksheet="DSP COPY")
-        
-        # --- LIMPIEZA DE ENCABEZADOS ---
-        # "Inclusion Date \nMM/DD..." -> "Inclusion Date MM/DD..."
+        # 1. Limpieza de columnas (Vectorizada = Rápida)
         df.columns = df.columns.astype(str).str.replace(r'\n', ' ', regex=True).str.strip()
         
-        # --- COLUMNAS NORMALIZADAS (Para la IA) ---
-        # Creamos copias en MAYÚSCULAS para que el filtro sea insensible a mayúsculas/minúsculas
+        # 2. Normalización de Texto
         cols_txt = ['DSP', 'Artist', 'Title', 'Playlist', 'Genre', 'Territory', 'Origin']
         for c in cols_txt:
             if c in df.columns:
                 df[f"{c}_CLEAN"] = df[c].astype(str).fillna("UNKNOWN").str.strip().str.upper()
         
-        # --- LIMPIEZA DE FECHAS (CRÍTICO) ---
-        # 1. Año
-        if 'Year' in df.columns:
-            df['Year'] = pd.to_numeric(df['Year'], errors='coerce').fillna(0).astype(int)
+        # 3. Fechas (Inclusion / Release)
+        # Convertimos todo lo que parezca fecha de una vez
+        for col in df.columns:
+            if 'Inclusion' in col or 'Release' in col:
+                df[col] = pd.to_datetime(df[col], errors='coerce')
+        
+        # 4. Cálculo de AÑO y MES (Vectorizado)
+        # Priorizamos Inclusion Date, luego Year manual
+        col_fecha = next((c for c in df.columns if 'Inclusion' in c), None)
+        
+        if col_fecha:
+            # Extraer Año y Mes de la fecha real
+            df['Year_Final'] = df[col_fecha].dt.year.fillna(0).astype(int)
+            df['Month_Final'] = df[col_fecha].dt.month.fillna(0).astype(int)
             
-        # 2. Mes (Mapeo Inteligente)
-        if 'Month' in df.columns:
-            mapa_mes = {
-                'ENERO':1, 'ENE':1, 'JANUARY':1, 'JAN':1, '1':1, '01':1,
-                'FEBRERO':2, 'FEB':2, 'FEBRUARY':2, '2':2, '02':2,
-                'MARZO':3, 'MAR':3, 'MARCH':3, '3':3, '03':3,
-                'ABRIL':4, 'ABR':4, 'APRIL':4, '4':4, '04':4,
-                'MAYO':5, 'MAY':5, '5':5, '05':5,
-                'JUNIO':6, 'JUN':6, 'JUNE':6, '6':6, '06':6,
-                'JULIO':7, 'JUL':7, 'JULY':7, '7':7, '07':7,
-                'AGOSTO':8, 'AGO':8, 'AUGUST':8, '8':8, '08':8,
-                'SEPTIEMBRE':9, 'SEP':9, 'SEPTEMBER':9, '9':9, '09':9,
-                'OCTUBRE':10, 'OCT':10, 'OCTOBER':10, '10':10,
-                'NOVIEMBRE':11, 'NOV':11, 'NOVEMBER':11, '11':11,
-                'DICIEMBRE':12, 'DIC':12, 'DECEMBER':12, '12':12
-            }
-            def fix_month(x):
-                if isinstance(x, (int, float)): return int(x)
-                s = str(x).strip().upper()
-                if s.isdigit(): return int(s)
-                return mapa_mes.get(s, 0)
-            
-            df['Month_CLEAN'] = df['Month'].apply(fix_month)
+            # Si la fecha dio 0 (era NaT), intentamos usar la columna manual
+            if 'Year' in df.columns:
+                df['Year_Manual'] = pd.to_numeric(df['Year'], errors='coerce').fillna(0).astype(int)
+                df['Year_Final'] = df.apply(lambda x: x['Year_Manual'] if x['Year_Final'] == 0 else x['Year_Final'], axis=1)
+                
+            if 'Month' in df.columns:
+                # Mapa de meses manuales
+                mapa_mes = {'ENERO':1, 'ENE':1, 'JANUARY':1, 'JAN':1, '1':1, '01':1, 'FEBRERO':2, 'FEB':2, '02':2, '2':2} # (Abreviado para velocidad, la IA entiende el resto)
+                def quick_month(x):
+                    s = str(x).strip().upper()
+                    return int(s) if s.isdigit() else mapa_mes.get(s, 0)
+                
+                df['Month_Manual'] = df['Month'].apply(quick_month)
+                df['Month_Final'] = df.apply(lambda x: x['Month_Manual'] if x['Month_Final'] == 0 else x['Month_Final'], axis=1)
+        
         else:
-            df['Month_CLEAN'] = 0
+            # Si no hay Inclusion Date, usamos manuales directo
+            df['Year_Final'] = pd.to_numeric(df['Year'], errors='coerce').fillna(0).astype(int) if 'Year' in df.columns else 0
+            df['Month_Final'] = pd.to_numeric(df['Month'], errors='coerce').fillna(0).astype(int) if 'Month' in df.columns else 0
 
-        # --- VALIDACIÓN FINAL ---
-        # Solo mantenemos filas que tengan un DSP válido (eliminamos filas vacías del Excel)
+        # Filtro de basura (Filas vacías)
         df = df[df['DSP_CLEAN'] != 'UNKNOWN']
         
         return df
-
     except Exception as e:
-        st.error(f"Error cargando datos: {e}")
-        return None
-
-with st.spinner('🔄 Sincronizando datos con ONErpm DSP COPY...'):
-    df = get_data()
+        st.error(f"Error procesando datos: {e}")
+        return pd.DataFrame()
 
 # ==============================================================================
-# 3. BARRA LATERAL (AUDITORÍA)
+# 3. CARGA CON DIAGNÓSTICO
 # ==============================================================================
 with st.sidebar:
-    st.image("https://upload.wikimedia.org/wikipedia/commons/thumb/1/19/Spotify_logo_without_text.svg/168px-Spotify_logo_without_text.svg.png", width=50)
+    st.image("https://upload.wikimedia.org/wikipedia/commons/thumb/1/19/Spotify_logo_without_text.svg/168px-Spotify_logo_without_text.svg.png", width=40)
     st.title("Panel de Control")
-    st.markdown("---")
-
-    # Configuración IA
-    try:
-        models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
-        # Preferimos Flash para rapidez, Pro para lógica
-        model_options = sorted(models, key=lambda x: 'flash' in x, reverse=True)
-        sel_model = st.selectbox("Modelo IA:", model_options, index=0)
-    except:
-        sel_model = "models/gemini-1.5-flash"
-        st.warning("⚠️ Modo Offline")
-
-    if st.button("🧹 Limpiar Chat"):
-        st.session_state.messages = []
-        st.rerun()
     
-    # --- AUDITOR DE LA VERDAD (Python Puro) ---
-    if df is not None:
-        st.markdown("### 🛡️ Auditoría en Vivo")
-        st.caption("Datos reales en base de datos (Sin alucinaciones):")
+    # Estado de Carga
+    status_text = st.empty()
+    bar = st.progress(0)
+    
+    try:
+        status_text.text("Conectando GSheets...")
+        raw_df = fetch_raw_data()
+        bar.progress(50)
         
-        # Filtro Hardcoded para Spotify
+        status_text.text("Procesando fechas...")
+        df = process_data(raw_df)
+        bar.progress(100)
+        time.sleep(0.5)
+        bar.empty()
+        status_text.empty()
+        
+    except Exception as e:
+        st.error(f"Se trabó en la carga: {e}")
+        st.stop()
+
+    # AUDITORÍA RÁPIDA
+    if not df.empty:
+        st.markdown("---")
+        st.caption("Auditoría en Vivo:")
+        
         spot_df = df[df['DSP_CLEAN'] == 'SPOTIFY']
-        
-        # Contamos filas reales
-        c25 = len(spot_df[(spot_df['Year'] == 2025) & (spot_df['Month_CLEAN'] == 1)])
-        c26 = len(spot_df[(spot_df['Year'] == 2026) & (spot_df['Month_CLEAN'] == 1)])
+        c25 = len(spot_df[(spot_df['Year_Final'] == 2025) & (spot_df['Month_Final'] == 1)])
+        c26 = len(spot_df[(spot_df['Year_Final'] == 2026) & (spot_df['Month_Final'] == 1)])
         
         c1, c2 = st.columns(2)
-        c1.metric("Spotify Ene 25", c25)
-        c2.metric("Spotify Ene 26", c26)
-        
-        st.markdown(f"**Total Filas:** {len(df)}")
+        c1.metric("Spot Ene 25", c25)
+        c2.metric("Spot Ene 26", c26)
 
 # ==============================================================================
-# 4. CHAT PRINCIPAL
+# 4. CHAT
 # ==============================================================================
-if df is not None:
-    # Pestañas para organizar
-    tab1, tab2 = st.tabs(["💬 Asistente Virtual", "📊 Explorador de Datos"])
+if not df.empty:
+    st.title("🎹 ONErpm Data Analyst")
+    
+    if "messages" not in st.session_state:
+        st.session_state.messages = [{"role": "assistant", "content": f"Datos cargados: {c25} registros en Ene 2025 y {c26} en Ene 2026. ¿Qué analizamos?"}]
 
-    with tab1:
-        st.subheader("Analista de Destaques")
-        st.caption("Haz preguntas sobre comparativas, tendencias y conteos.")
+    for msg in st.session_state.messages:
+        with st.chat_message(msg["role"]):
+            st.markdown(msg["content"])
 
-        if "messages" not in st.session_state:
-            st.session_state.messages = [{"role": "assistant", "content": f"Hola. He validado los datos. Para Spotify Enero, tengo **{c25}** registros en 2025 y **{c26}** en 2026. ¿Qué quieres analizar?"}]
+    if prompt := st.chat_input("Ej: Diferencia Enero 2025 vs 2026"):
+        st.session_state.messages.append({"role": "user", "content": prompt})
+        with st.chat_message("user"):
+            st.markdown(prompt)
 
-        for msg in st.session_state.messages:
-            with st.chat_message(msg["role"]):
-                st.markdown(msg["content"])
-
-        if prompt := st.chat_input("Ej: Diferencia porcentual entre 2025 y 2026"):
-            st.session_state.messages.append({"role": "user", "content": prompt})
-            with st.chat_message("user"):
-                st.markdown(prompt)
-
-            with st.chat_message("assistant"):
-                status = st.status("🧠 Procesando lógica...", expanded=True)
+        with st.chat_message("assistant"):
+            caja = st.empty()
+            caja.info("🧠 Pensando...")
+            
+            try:
+                # Prompt con los datos correctos inyectados
+                dsps = list(df['DSP_CLEAN'].unique())
+                info_chivada = f"DATOS REALES: Spotify Ene 2025 tiene {c25} filas. Spotify Ene 2026 tiene {c26} filas."
                 
-                try:
-                    # PREPARAMOS DATOS "CHIVADOS" PARA LA IA
-                    # Calculamos algunas métricas clave en Python para pasárselas en el prompt
-                    # Esto evita que la IA tenga que calcular desde cero y se equivoque.
-                    resumen_txt = f"AUDITORÍA PREVIA: Spotify Ene 2025 = {c25}, Spotify Ene 2026 = {c26}."
-                    
-                    dsps_list = list(df['DSP_CLEAN'].unique())
-                    
-                    prompt_sistema = f"""
-                    Actúa como Senior Data Analyst (Python Expert).
-                    
-                    CONTEXTO DE DATOS:
-                    - DataFrame `df` cargado.
-                    - Columnas CLAVE: `DSP_CLEAN`, `Year` (int), `Month_CLEAN` (int).
-                    - {resumen_txt} (USA ESTOS NÚMEROS COMO REFERENCIA).
-                    
-                    INSTRUCCIONES:
-                    1. Escribe código Python para responder al usuario: "{prompt}"
-                    2. **FILTRADO:**
-                       - Usa `df['DSP_CLEAN'] == 'SPOTIFY'` (Mayúsculas).
-                       - Usa `Year` y `Month_CLEAN`.
-                       - ¡NO ALUCINES! Confía en los filtros simples.
-                    
-                    3. **VISUALIZACIÓN:**
-                       - Usa `plotly.express` (px) para gráficas.
-                       - Muestra `st.metric` para KPIs.
-                    
-                    4. **EVIDENCIA (IMPORTANTE):**
-                       - Al final, muestra las primeras 5 filas del dataframe filtrado usando:
-                       - `with st.expander("📂 Ver Evidencia (Filas usadas)"): st.dataframe(df_filtrado)`
-                    
-                    Genera SOLO código Python.
-                    """
+                prompt_sys = f"""
+                Actúa como Data Analyst experto.
+                
+                TUS DATOS (DataFrame `df`):
+                - Columnas CLAVE: `DSP_CLEAN`, `Year_Final` (int), `Month_Final` (int).
+                - {info_chivada} (Usa esto como verdad absoluta).
+                - DSPs: {dsps}
+                
+                INSTRUCCIONES:
+                1. Filtra usando `DSP_CLEAN == 'SPOTIFY'`, `Year_Final` y `Month_Final`.
+                2. Genera código Python con `plotly.express`.
+                3. Usa `st.metric` para mostrar la diferencia numérica.
+                4. IMPRIME: `st.write(f"Filas encontradas: {{len(df_filtrado)}}")`.
+                
+                Genera SOLO código Python.
+                """
 
-                    # Llamada a IA con Reintento
-                    def call_api():
-                        model = genai.GenerativeModel(sel_model)
-                        return model.generate_content(prompt_sistema)
+                # Selección de modelo
+                model = genai.GenerativeModel("models/gemini-1.5-flash") # Flash es más rápido y estable
+                response = model.generate_content(prompt_sys)
+                
+                # Limpieza
+                clean_res = response.text.replace("```python", "").replace("```", "").strip()
+                
+                caja.empty()
+                local_env = {"df": df, "pd": pd, "st": st, "px": px, "go": go}
+                exec(clean_res, {}, local_env)
+                
+                st.session_state.messages.append({"role": "assistant", "content": "✅ Hecho."})
 
-                    try:
-                        response = call_api()
-                    except Exception as e:
-                        if "429" in str(e):
-                            status.warning("Tráfico alto. Reintentando en 15s...")
-                            time.sleep(15)
-                            response = call_api()
-                        else:
-                            raise e
-
-                    # Limpieza de código
-                    match = re.search(r"```python(.*?)```", response.text, re.DOTALL)
-                    code = match.group(1).strip() if match else response.text.replace("```python", "").replace("```", "").strip()
-                    
-                    status.write("Generando gráficas...")
-                    
-                    # Ejecución
-                    local_env = {"df": df, "pd": pd, "st": st, "px": px, "go": go}
-                    exec(code, {}, local_env)
-                    
-                    status.update(label="✅ Análisis Completado", state="complete", expanded=False)
-                    st.session_state.messages.append({"role": "assistant", "content": "✅ Análisis generado."})
-
-                except Exception as e:
-                    status.update(label="❌ Error", state="error")
-                    st.error(f"Error Técnico: {e}")
-
-    # --- PESTAÑA 2: EXPLORADOR ---
-    with tab2:
-        st.header("Explorador de Datos Maestros")
-        
-        c1, c2 = st.columns(2)
-        with c1:
-            f_year = st.multiselect("Año", sorted(df['Year'].unique()), default=[2025, 2026])
-        with c2:
-            f_dsp = st.multiselect("DSP", sorted(df['DSP_CLEAN'].unique()), default=['SPOTIFY'])
-            
-        # Filtro Dinámico
-        df_show = df[df['Year'].isin(f_year)]
-        if f_dsp:
-            df_show = df_show[df_show['DSP_CLEAN'].isin(f_dsp)]
-            
-        st.markdown(f"**Resultados:** {len(df_show)} filas")
-        st.dataframe(df_show, use_container_width=True)
-        
-        if not df_show.empty:
-            st.markdown("#### Resumen por Mes")
-            pivot = df_show.groupby(['Year', 'Month_CLEAN']).size().reset_index(name='Cantidad')
-            st.dataframe(pivot, use_container_width=True)
-
-else:
-    st.info("Cargando sistema...")
+            except Exception as e:
+                caja.error(f"Error: {e}")

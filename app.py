@@ -12,7 +12,7 @@ import unicodedata
 import io
 
 # ==============================================================================
-# 1. UX/UI PREMIUM (ESTILO CONSULTORA)
+# 1. UX/UI PREMIUM
 # ==============================================================================
 st.set_page_config(
     page_title="ONErpm Strategic Analyst",
@@ -24,31 +24,21 @@ st.set_page_config(
 st.markdown("""
 <style>
     .stApp { background-color: #FFFFFF !important; }
-    
-    /* Tipografía Corporativa */
     h1, h2, h3, p, div, span, li, label { 
         color: #1F2937 !important; 
         font-family: 'Helvetica Neue', sans-serif; 
     }
-    
-    /* Métricas con diseño de tarjeta */
     div[data-testid="stMetric"] { 
         background-color: #F9FAFB !important; 
         border: 1px solid #E5E7EB; 
         border-radius: 10px; 
         padding: 15px;
-        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+        border-left: 5px solid #005fcc;
     }
     div[data-testid="stMetricLabel"] { color: #6B7280 !important; font-size: 0.9rem; font-weight: 600; }
     div[data-testid="stMetricValue"] { color: #111827 !important; font-size: 1.8rem; font-weight: 800; }
-    
-    /* Chat bubbles */
     .stChatMessage { background-color: #F3F4F6 !important; border: 1px solid #E5E7EB; }
-    
-    /* Tablas */
     div[data-testid="stDataFrame"] { border: 1px solid #E5E7EB; }
-    
-    /* Sidebar */
     [data-testid="stSidebar"] { background-color: #F9FAFB !important; border-right: 1px solid #E5E7EB; }
 </style>
 """, unsafe_allow_html=True)
@@ -60,7 +50,7 @@ else:
     genai.configure(api_key=st.secrets["GOOGLE_API_KEY"])
 
 # ==============================================================================
-# 2. MOTOR ETL (LIMPIEZA DE DATOS)
+# 2. MOTOR ETL (LIMPIEZA)
 # ==============================================================================
 def normalize_text(text):
     if not isinstance(text, str): return str(text)
@@ -69,19 +59,15 @@ def normalize_text(text):
 
 URL_SHEET = "https://docs.google.com/spreadsheets/d/10y2YowTEgQYdWxs6c8D0fgJDDwGIT8_wyH0rQbERgG0/edit?gid=1919114384#gid=1919114384"
 
-@st.cache_data(ttl=3600, show_spinner="📡 Conectando a Base de Datos...")
+@st.cache_data(ttl=3600, show_spinner="📡 Conectando...")
 def load_data():
     conn = st.connection("gsheets", type=GSheetsConnection)
     return conn.read(spreadsheet=URL_SHEET, worksheet="DSP COPY")
 
-@st.cache_data(ttl=3600, show_spinner="🧹 Normalizando y Estructurando...")
+@st.cache_data(ttl=3600, show_spinner="🧹 Normalizando...")
 def clean_dataframe(df):
     try:
-        df.columns = [
-            str(c).upper().replace('\n', ' ').replace('/', '_').replace('.', '').strip().replace(' ', '_') 
-            for c in df.columns
-        ]
-        
+        df.columns = [str(c).upper().replace('\n', ' ').replace('/', '_').replace('.', '').strip().replace(' ', '_') for c in df.columns]
         cleaned_cols_log = []
         ignore_cols = ['YEAR', 'MONTH', 'WEEK', 'Q', 'INCLUSION_DATE', 'RELEASE_DATE']
         
@@ -102,16 +88,11 @@ def clean_dataframe(df):
             dt_inc = pd.to_datetime(df[col_inc], errors='coerce')
             df['Year_Final'] = dt_inc.dt.year.fillna(0).astype(int)
             df['Month_Final'] = dt_inc.dt.month.fillna(0).astype(int)
-            
         if col_year:
             y_man = pd.to_numeric(df[col_year], errors='coerce').fillna(0).astype(int)
             df['Year_Final'] = df.apply(lambda x: y_man[x.name] if x['Year_Final'] == 0 else x['Year_Final'], axis=1)
-
         if col_month:
-            mapa_mes = {'ENERO':1, 'ENE':1, 'JAN':1, 'FEBRERO':2, 'FEB':2, 'MARZO':3, 'MAR':3,
-                        'ABRIL':4, 'ABR':4, 'MAYO':5, 'MAY':5, 'JUNIO':6, 'JUN':6,
-                        'JULIO':7, 'JUL':7, 'AGOSTO':8, 'AGO':8, 'SEPTIEMBRE':9, 'SEP':9,
-                        'OCTUBRE':10, 'OCT':10, 'NOVIEMBRE':11, 'NOV':11, 'DICIEMBRE':12, 'DIC':12}
+            mapa_mes = {'ENERO':1, 'ENE':1, 'JAN':1, 'FEBRERO':2, 'FEB':2, 'MARZO':3, 'MAR':3, 'ABRIL':4, 'ABR':4, 'MAYO':5, 'MAY':5, 'JUNIO':6, 'JUN':6, 'JULIO':7, 'JUL':7, 'AGOSTO':8, 'AGO':8, 'SEPTIEMBRE':9, 'SEP':9, 'OCTUBRE':10, 'OCT':10, 'NOVIEMBRE':11, 'NOV':11, 'DICIEMBRE':12, 'DIC':12}
             def get_month(x):
                 s = normalize_text(str(x))
                 if s.isdigit(): return int(s)
@@ -121,161 +102,120 @@ def clean_dataframe(df):
 
         col_dsp = next((c for c in cleaned_cols_log if 'DSP' in c), None)
         if col_dsp: df = df[df[col_dsp] != 'UNKNOWN']
-
         return df, cleaned_cols_log
-
     except Exception as e:
         st.error(f"Error ETL: {e}")
         return pd.DataFrame(), []
 
-# ==============================================================================
-# 3. GESTIÓN INTELIGENTE DE MODELOS (FIX 404)
-# ==============================================================================
 def get_valid_models():
-    """Escanea la cuenta del usuario para ver qué modelos REALMENTE tiene."""
     try:
         models = genai.list_models()
-        valid_models = []
-        for m in models:
-            if 'generateContent' in m.supported_generation_methods:
-                valid_models.append(m.name)
-        return valid_models
-    except Exception as e:
-        st.error(f"Error conectando a Gemini API: {e}")
-        return []
+        valid = [m.name for m in models if 'generateContent' in m.supported_generation_methods]
+        return valid
+    except: return []
 
 # ==============================================================================
-# 4. INTERFAZ
+# 3. INTERFAZ & EXPORTACIÓN
 # ==============================================================================
 with st.sidebar:
     st.image("https://upload.wikimedia.org/wikipedia/commons/thumb/1/19/Spotify_logo_without_text.svg/168px-Spotify_logo_without_text.svg.png", width=50)
     st.title("Enterprise Suite")
-    st.caption("v26.0 Senior Analyst")
+    st.caption("v28.0 Syntax Fix")
     
-    # Selector de Modelo Dinámico (Solo muestra los que existen)
     valid_models_list = get_valid_models()
-    
     if valid_models_list:
-        # Intentamos poner el Pro primero, si existe
         default_idx = 0
         for i, m in enumerate(valid_models_list):
-            if "pro" in m and "1.5" in m:
-                default_idx = i
-                break
-        sel_model = st.selectbox("Modelo Principal:", valid_models_list, index=default_idx)
+            if "pro" in m: default_idx = i; break
+        sel_model = st.selectbox("Modelo:", valid_models_list, index=default_idx)
     else:
-        st.error("No se encontraron modelos disponibles.")
+        st.error("No API Access")
         st.stop()
     
     st.divider()
-    
     raw_df = load_data()
     df, cols_clean = clean_dataframe(raw_df)
     
     if not df.empty:
         col_dsp = next((c for c in cols_clean if 'DSP' in c), None)
-        if col_dsp:
-            pivot = df.groupby(['Year_Final', 'Month_Final', col_dsp]).size().reset_index(name='Count')
-            pivot = pivot[pivot['Count'] > 0]
-            truth_table = pivot.to_string(index=False)
-        else:
-            truth_table = "No DSP data."
-            
-        st.success(f"Datos Cargados: {len(df)} registros")
+        pivot = df.groupby(['Year_Final', 'Month_Final', col_dsp]).size().reset_index(name='Count') if col_dsp else pd.DataFrame()
+        pivot = pivot[pivot['Count'] > 0]
+        truth_table = pivot.to_string(index=False)
+        st.success(f"DB: {len(df)} regs")
         
         buffer = io.BytesIO()
         with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
             df.to_excel(writer, sheet_name='CleanData', index=False)
-        st.download_button("📥 Bajar Excel Limpio", buffer, "onerpm_data.xlsx")
+        st.download_button("📥 Excel Limpio", buffer, "onerpm_clean.xlsx")
 
 # ==============================================================================
-# 5. CHAT ANALÍTICO (CON REPORTE DE TEXTO)
+# 4. CHAT INTELLIGENCE
 # ==============================================================================
 if not df.empty:
     st.title("🎹 ONErpm Strategic Analyst")
-    st.markdown("Generación de reportes ejecutivos, proyecciones y análisis de tendencias.")
-
+    
     if "messages" not in st.session_state:
-        st.session_state.messages = [{"role": "assistant", "content": "Soy tu Analista Senior. Puedo generar gráficas, predecir el Q1 2026 y redactar informes. ¿Por dónde empezamos?"}]
+        st.session_state.messages = [{"role": "assistant", "content": "Soy tu Consultor de Datos. Puedo generar reportes ejecutivos, proyecciones y análisis comparativos. ¿Qué necesitas?"}]
 
     for msg in st.session_state.messages:
         with st.chat_message(msg["role"]):
             st.markdown(msg["content"])
 
-    if prompt := st.chat_input("Ej: Diferencia Spotify Ene 25 vs 26 y proyecciones"):
+    if prompt := st.chat_input("Ej: Diferencia Spotify Ene 2025 vs 2026"):
         st.session_state.messages.append({"role": "user", "content": prompt})
         with st.chat_message("user"):
             st.markdown(prompt)
 
         with st.chat_message("assistant"):
             caja = st.empty()
-            caja.info(f"🧠 Analizando y Redactando Informe...")
+            caja.info(f"🧠 Generando Reporte Ejecutivo...")
             
-            # --- FUNCIÓN DE LLAMADA HÍBRIDA DINÁMICA ---
+            # --- FUNCIÓN HÍBRIDA ROBUSTA ---
             def call_ai_smart(prompt_text, main_model, available_list):
-                # 1. Intentar modelo principal
                 try:
                     model = genai.GenerativeModel(main_model)
                     return model.generate_content(prompt_text)
                 except Exception as e:
-                    error_str = str(e)
-                    # 2. Si falla por cuota (429) o server (503), buscar un Flash en la lista
-                    if "429" in error_str or "503" in error_str:
-                        # Buscar un modelo que tenga 'flash' en el nombre
+                    if "429" in str(e) or "503" in str(e):
                         fallback = next((m for m in available_list if 'flash' in m), None)
                         if fallback:
-                            caja.warning(f"⚠️ Modelo principal saturado. Cambiando a {fallback} para completar reporte...")
-                            time.sleep(2)
-                            model_bk = genai.GenerativeModel(fallback)
-                            return model_bk.generate_content(prompt_text)
-                        else:
-                            raise e # No hay fallback Flash disponible
-                    else:
-                        raise e
+                            caja.warning(f"⚠️ Tráfico alto. Cambiando a {fallback}...")
+                            time.sleep(4) # Pausa de seguridad
+                            return genai.GenerativeModel(fallback).generate_content(prompt_text)
+                    raise e
 
             code = None
             try:
-                # PROMPT: "ANALISTA + REPORTING"
+                # PROMPT CORREGIDO (ANTI-ERROR SERIES)
                 prompt_sys = f"""
-                Eres un Consultor de Datos Senior (Data Analyst) experto en Python.
+                Eres un Data Scientist Senior.
                 
-                TU OBJETIVO:
-                No solo calcules números. Debes contar una historia con los datos.
-                Tu salida debe ser un script de Python que genere un reporte visual y textual en Streamlit.
+                OBJETIVO:
+                Generar un reporte completo en Streamlit (Gráficas + Texto Ejecutivo).
                 
-                HERRAMIENTAS:
-                - `df` (DataFrame pandas ya cargado).
-                - `normalize_text` (función limpieza).
-                - `LinearRegression` (sklearn), `numpy` (np), `plotly.express` (px).
-                
-                DATOS DISPONIBLES:
-                - Columnas Texto: {cols_clean}
+                DATOS (Ya cargados en variable `df`):
+                - Columnas: {cols_clean}
                 - Fechas: Year_Final, Month_Final.
-                - RESUMEN HISTÓRICO: {truth_table}
+                - RESUMEN: {truth_table}
                 
-                SOLICITUD CLIENTE: "{prompt}"
+                SOLICITUD: "{prompt}"
                 
-                ESTRUCTURA OBLIGATORIA DEL CÓDIGO PYTHON A GENERAR:
+                REGLAS DE CÓDIGO CRÍTICAS (PARA EVITAR ERRORES):
+                1. **FILTRADO SEGURO**:
+                   - INCORRECTO: `normalize_text(df['COL']) == ...` (Esto causa error).
+                   - CORRECTO: `df['COL_CLEAN'] == normalize_text('Valor')`.
+                   - SIEMPRE usa las columnas _CLEAN ya existentes.
                 
-                1. **CÁLCULOS**:
-                   - Filtra datos (usando `normalize_text`).
-                   - Si piden proyección: entrena modelo con 2023-2025, predice Q1 2026.
-                   - Si piden diferencia: calcula variación absoluta y %.
+                2. **PROYECCIONES (LinearRegression)**:
+                   - Entrena con histórico 2023-2025. Predice 2026.
+                   - Usa `len()` para contar registros. NO uses 'Count'.
                 
-                2. **VISUALIZACIÓN**:
-                   - Genera gráficas (Torta, Barras, Línea) según corresponda.
-                   - Usa `st.plotly_chart`.
+                3. **REPORTE EJECUTIVO**:
+                   - Usa `st.markdown` al final.
+                   - Explica los hallazgos: "El crecimiento fue de X%...".
+                   - Interpreta la proyección: "Se espera una tendencia...".
                 
-                3. **REPORTE EJECUTIVO (IMPORTANTE)**:
-                   - Usa `st.markdown("### 📝 Análisis Ejecutivo")`.
-                   - Escribe un texto interpretando los resultados. Ejemplo: "Observamos un crecimiento del X%..." o "La proyección indica una tendencia a la baja debido a...".
-                   - Usa bullet points para los hallazgos clave.
-                
-                REGLAS TÉCNICAS:
-                - ¡NO INVENTES DATOS! Usa `df`.
-                - ¡NO USES 'Count'! Usa `len(df_filtrado)`.
-                
-                Genera SOLO el bloque de código Python.
+                Genera SOLO código Python.
                 """
 
                 response = call_ai_smart(prompt_sys, sel_model, valid_models_list)
@@ -286,15 +226,16 @@ if not df.empty:
                 exec_globals = {
                     "df": df, "pd": pd, "np": np, "st": st, "px": px, "go": go,
                     "LinearRegression": LinearRegression,
-                    "normalize_text": normalize_text, "unicodedata": unicodedata
+                    "normalize_text": normalize_text, "unicodedata": unicodedata,
+                    "io": io
                 }
                 
                 exec(code, exec_globals)
                 
-                st.session_state.messages.append({"role": "assistant", "content": "✅ Reporte generado con éxito."})
+                st.session_state.messages.append({"role": "assistant", "content": "✅ Reporte Finalizado."})
 
             except Exception as e:
                 caja.error(f"Error generando reporte: {e}")
                 if code:
-                    with st.expander("Ver código fallido"):
+                    with st.expander("Ver código (Debug)"):
                         st.code(code)

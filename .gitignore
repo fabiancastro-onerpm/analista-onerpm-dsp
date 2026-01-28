@@ -1,0 +1,23 @@
+# Archivos de sistema y cache de Python (Basura)
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+.env
+.venv/
+
+# Archivos de Streamlit y Secretos (¡MUY IMPORTANTE!)
+.streamlit/secrets.toml
+.streamlit/config.toml
+
+# Datos locales (Para no subir Excels pesados por error)
+*.csv
+*.xlsx
+*.xls
+*.json
+
+# Logs de errores
+*.log

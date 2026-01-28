@@ -9,7 +9,7 @@ import re
 # -----------------------------------------------------------------------------
 # 1. CONFIGURACIÓN E INTERFAZ
 # -----------------------------------------------------------------------------
-st.set_page_config(page_title="Analista ONErpm - AndReg&Car", page_icon="🎹", layout="wide")
+st.set_page_config(page_title="Analista ONErpm - DSP COPY", page_icon="🎹", layout="wide")
 
 # Conexión API
 try:
@@ -20,103 +20,104 @@ except:
 
 # Selector de Modelo (Sidebar)
 with st.sidebar:
-    st.header("🧠 Cerebro AI")
+    st.header("🧠 Configuración")
     try:
+        # Intentamos listar modelos disponibles
         models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
-        # Preferimos el PRO para razonamiento lógico
+        # Ponemos el PRO primero (mejor razonamiento)
         model_options = sorted(models, key=lambda x: 'pro' not in x)
         selected_model = st.selectbox("Modelo:", model_options, index=0)
     except:
+        # Fallback si falla la lista
         selected_model = "models/gemini-1.5-flash"
+        st.warning("Usando modelo Flash por defecto.")
 
 # -----------------------------------------------------------------------------
-# 2. CARGA Y LIMPIEZA DE DATOS (ETL DURO)
+# 2. CARGA DE DATOS (Pestaña: DSP COPY)
 # -----------------------------------------------------------------------------
 url_sheet = "https://docs.google.com/spreadsheets/d/10y2YowTEgQYdWxs6c8D0fgJDDwGIT8_wyH0rQbERgG0/edit?gid=1919114384#gid=1919114384"
 
 @st.cache_data(ttl=600)
-def load_data_andreg():
+def load_data_dsp_copy():
     conn = st.connection("gsheets", type=GSheetsConnection)
     try:
-        # 1. LEER SOLO LA PESTAÑA CORRECTA
-        df = conn.read(spreadsheet=url_sheet, worksheet="AndReg&Car")
+        # LEER PESTAÑA EXACTA "DSP COPY"
+        df = conn.read(spreadsheet=url_sheet, worksheet="DSP COPY")
         
         # ---------------------------------------------------------
-        # FASE DE LIMPIEZA PROFUNDA (PRE-IA)
+        # FASE DE LIMPIEZA TÉCNICA (ETL)
         # ---------------------------------------------------------
         
-        # A. Limpiar Nombres de Columnas (Quitar saltos de línea y espacios)
-        # Tu columna "Inclusion Date \nMM/DD/YYYY" se limpiará a "Inclusion Date MM/DD/YYYY"
-        df.columns = df.columns.str.replace('\n', ' ').str.strip()
+        # 1. Limpiar encabezados de columna (quitar \n y espacios extra)
+        # Esto arregla "Inclusion Date \nMM/DD/YYYY" -> "Inclusion Date MM/DD/YYYY"
+        df.columns = df.columns.astype(str).str.replace(r'\n', ' ', regex=True).str.strip()
         
-        # B. Estandarización de Texto (DSP, Artist, Playlist)
-        # Creamos columnas _CLEAN para que el filtro sea insensible a mayúsculas/espacios
-        cols_texto = ['DSP', 'Artist', 'Title', 'Playlist', 'Genre', 'Origin']
+        # 2. Normalizar Texto (DSP, Artista, Territorio)
+        # Creamos columnas "_CLEAN" para que los filtros sean a prueba de balas
+        cols_texto = ['DSP', 'Artist', 'Title', 'Playlist', 'Genre', 'Origin', 'Territory', 'Business Unit']
         for col in cols_texto:
             if col in df.columns:
-                # Convertir a String -> Mayúsculas -> Quitar espacios -> Rellenar vacíos
-                df[f"{col}_CLEAN"] = df[col].astype(str).fillna("").str.strip().str.upper()
+                # Convertir a String -> Mayúsculas -> Quitar espacios
+                df[f"{col}_CLEAN"] = df[col].astype(str).fillna("UNKNOWN").str.strip().str.upper()
         
-        # C. Estandarización de Fechas y Números (Year, Month)
-        # Forzamos a que sean números enteros. Si hay error, pone 0.
+        # 3. Normalizar Fechas y Números (Year, Month)
         if 'Year' in df.columns:
             df['Year'] = pd.to_numeric(df['Year'], errors='coerce').fillna(0).astype(int)
             
         if 'Month' in df.columns:
-            # Diccionario por si el mes viene en texto
+            # Diccionario para meses en texto
             mapa_meses = {'ENERO':1, 'JANUARY':1, 'FEBRERO':2, 'FEBRUARY':2, 'MARZO':3, 'MARCH':3, 
-                          'ABRIL':4, 'APRIL':4, 'MAYO':5, 'MAY':5, 'JUNIO':6, 'JUNE':6} 
+                          'ABRIL':4, 'APRIL':4, 'MAYO':5, 'MAY':5, 'JUNIO':6, 'JUNE':6}
             
-            # Función auxiliar para limpiar el mes
             def limpiar_mes(val):
                 if isinstance(val, (int, float)): return val
-                val_str = str(val).upper().strip()
-                if val_str.isdigit(): return int(val_str)
-                return mapa_meses.get(val_str, 0) # Devuelve 0 si no entiende
+                s = str(val).upper().strip()
+                if s.isdigit(): return int(s)
+                return mapa_meses.get(s, 0)
 
             df['Month'] = df['Month'].apply(limpiar_mes)
             df['Month'] = pd.to_numeric(df['Month'], errors='coerce').fillna(0).astype(int)
 
-        # D. Release Date
-        if 'Release Date' in df.columns:
-            df['Release Date'] = pd.to_datetime(df['Release Date'], errors='coerce')
+        # 4. Fechas Completas
+        # Buscamos columnas de fecha típicas
+        cols_fecha = ['Release Date', 'Inclusion Date', 'Inclusion Date MM/DD/YYYY']
+        for col in cols_fecha:
+            if col in df.columns:
+                df[col] = pd.to_datetime(df[col], errors='coerce')
 
         return df
     except Exception as e:
-        st.error(f"Error cargando AndReg&Car: {e}")
+        st.error(f"Error cargando la pestaña 'DSP COPY': {e}")
         return None
 
-df = load_data_andreg()
+df = load_data_dsp_copy()
 
 # -----------------------------------------------------------------------------
-# 3. MONITOR DE VERDAD (SIDEBAR DEBUG)
+# 3. MONITOR DE DATOS (BARRA LATERAL)
 # -----------------------------------------------------------------------------
 if df is not None:
-    st.title("🎹 Analista AndReg&Car (Blindado)")
+    st.title("🎹 Analista ONErpm (DSP COPY)")
     
     with st.sidebar:
         st.markdown("---")
-        st.header("🔍 Datos Reales Detectados")
-        st.caption("Esto es lo que Python ve antes de la IA:")
-        
-        st.metric("Total Filas (Destaques)", len(df))
+        st.header("🔍 Auditoría de Datos")
+        st.write(f"**Filas Totales:** {len(df)}")
         
         if 'Year' in df.columns:
-            years_found = sorted(df[df['Year'] > 0]['Year'].unique())
-            st.write(f"📅 **Años:** {years_found}")
+            st.write(f"📅 **Años:** {sorted(df[df['Year']>0]['Year'].unique())}")
             
-            # --- DEBUGGER ESPECÍFICO 2025 vs 2026 ---
-            c_2025 = len(df[df['Year'] == 2025])
-            c_2026 = len(df[df['Year'] == 2026])
-            st.write(f"👉 Filas Año 2025: **{c_2025}**")
-            st.write(f"👉 Filas Año 2026: **{c_2026}**")
-
+            # Chequeo rápido para ti
+            c2025 = len(df[df['Year']==2025])
+            c2026 = len(df[df['Year']==2026])
+            st.caption(f"Registros 2025: {c2025}")
+            st.caption(f"Registros 2026: {c2026}")
+        
         if 'DSP_CLEAN' in df.columns:
-            st.write("🎧 **DSPs (Normalizados):**")
+            st.write("**DSPs Detectados:**")
             st.code(sorted(df['DSP_CLEAN'].unique()))
 
 # -----------------------------------------------------------------------------
-# 4. CHAT LOGIC (USANDO COLUMNAS LIMPIAS)
+# 4. CHAT INTELIGENTE
 # -----------------------------------------------------------------------------
 def clean_code(text):
     match = re.search(r"```python(.*?)```", text, re.DOTALL)
@@ -125,7 +126,7 @@ def clean_code(text):
 if df is not None:
     if "messages" not in st.session_state:
         st.session_state.messages = []
-        st.session_state.messages.append({"role": "assistant", "content": "Hola. Analizo exclusivamente la pestaña **AndReg&Car**. Ya limpié los datos. ¿Qué necesitas?"})
+        st.session_state.messages.append({"role": "assistant", "content": "Conectado a **DSP COPY**. Datos limpios y listos."})
 
     for msg in st.session_state.messages:
         with st.chat_message(msg["role"]):
@@ -138,40 +139,36 @@ if df is not None:
 
         with st.chat_message("assistant"):
             caja = st.empty()
-            caja.info("🧠 Generando análisis sobre datos limpios...")
+            caja.info("🧠 Procesando...")
 
             try:
-                # Preparamos la lista de valores válidos para el prompt
-                dsps_validos = list(df['DSP_CLEAN'].unique())
+                # Contexto para el Prompt
+                dsps = list(df['DSP_CLEAN'].unique()) if 'DSP_CLEAN' in df.columns else []
                 
                 prompt_maestro = f"""
-                Eres un Data Analyst Python experto en ONErpm.
+                Eres un Data Analyst Senior.
                 
                 CONTEXTO:
-                - Estás analizando la pestaña "AndReg&Car".
-                - Los datos YA HAN SIDO LIMPIADOS por Python.
-                - DataFrame disponible: `df`
+                - Pestaña: "DSP COPY"
+                - DataFrame: `df`
+                - Columnas LIMPIAS: `DSP_CLEAN`, `Artist_CLEAN`, `Year` (int), `Month` (int).
+                - DSPs Disponibles: {dsps}
                 
-                COLUMNAS DISPONIBLES (USAR ESTAS):
-                - Para filtrar DSP usa: `DSP_CLEAN` (Valores: {dsps_validos})
-                - Para filtrar Artista usa: `Artist_CLEAN`
-                - Fechas: `Year` (int), `Month` (int), `Release Date` (datetime).
+                INSTRUCCIONES DE CÓDIGO:
+                1. **FILTRADO:**
+                   - Usa `df['DSP_CLEAN'] == 'SPOTIFY'` (Mayúsculas). NO uses la columna 'DSP' original.
+                   - Usa `Year` y `Month` para fechas.
                 
-                REGLAS OBLIGATORIAS:
-                1. **FILTRADO:** Usa SIEMPRE las columnas `_CLEAN` y valores en MAYÚSCULAS.
-                   - CORRECTO: `df[df['DSP_CLEAN'] == 'SPOTIFY']`
-                   - INCORRECTO: `df[df['DSP'] == 'Spotify']`
+                2. **LÓGICA:**
+                   - 1 Fila = 1 Placement. Usa `len(df)`.
                 
-                2. **LÓGICA:** - Cada fila es un destaque. Usa `len(df)` para contar.
-                   - Si piden comparar Enero 2025 vs 2026, filtra por `Month==1` y `Year==2025`/`2026`.
+                3. **DEBUG OBLIGATORIO:**
+                   - Antes de mostrar el resultado final, IMPRIME cuántas filas encontraste.
+                   - `st.write(f"Encontré {{len(df_2025)}} filas en 2025")`.
                 
-                3. **VERIFICACIÓN (DEBUG):**
-                   - IMPRIME SIEMPRE los conteos intermedios con `st.write()`.
-                   - Ej: `st.write(f"Encontré {{len(df_2025)}} filas para 2025")`.
+                4. **SALIDA:** Solo código Python.
                 
-                4. **SALIDA:** Genera SOLO código Python.
-                
-                Usuario pregunta: "{prompt}"
+                Usuario: "{prompt}"
                 """
                 
                 model = genai.GenerativeModel(selected_model)
@@ -185,4 +182,4 @@ if df is not None:
                 st.session_state.messages.append({"role": "assistant", "content": "✅ Análisis completado."})
 
             except Exception as e:
-                caja.error(f"Error de ejecución: {e}")
+                caja.error(f"Error: {e}")

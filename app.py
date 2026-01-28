@@ -45,7 +45,7 @@ else:
     genai.configure(api_key=st.secrets["GOOGLE_API_KEY"])
 
 # ==============================================================================
-# 2. MOTOR ETL (LIMPIEZA UNIVERSAL)
+# 2. MOTOR ETL (LIMPIEZA TOTAL DE 21 COLUMNAS)
 # ==============================================================================
 def normalize_text(text):
     """LIMPIEZA PROFUNDA: Sin tildes, Mayúsculas, Sin espacios extra."""
@@ -60,53 +60,49 @@ def load_data():
     conn = st.connection("gsheets", type=GSheetsConnection)
     return conn.read(spreadsheet=URL_SHEET, worksheet="DSP COPY")
 
-@st.cache_data(ttl=3600, show_spinner="🧹 Ejecutando Limpieza Universal...")
+@st.cache_data(ttl=3600, show_spinner="🧹 Ejecutando Limpieza en TODAS las columnas...")
 def clean_dataframe(df):
     try:
-        # 1. Limpieza de Encabezados (Quitar saltos de línea y espacios)
-        df.columns = [str(c).upper().replace('\n', ' ').strip() for c in df.columns]
-        
-        # 2. LISTA MAESTRA DE COLUMNAS DE TEXTO A LIMPIAR
-        # Estas son las que el usuario querrá analizar
-        target_text_cols = [
-            'DSP', 'ARTIST', 'TITLE', 'GENRE', 'SUB-GENRE', 
-            'TERRITORY', 'ORIGIN', 'PLAYLIST', 'BUSINESS UNIT', 'FORMAT'
+        # 1. Estandarizar Encabezados (UPPERCASE, sin saltos de linea)
+        # Esto convierte "Inclusion Date \nMM/DD..." en "INCLUSION_DATE_MM_DD_YYYY"
+        df.columns = [
+            str(c).upper().replace('\n', ' ').replace('/', '_').replace('.', '').strip().replace(' ', '_') 
+            for c in df.columns
         ]
         
         cleaned_cols_log = []
 
-        # BUCLE DE LIMPIEZA MASIVA
-        for target in target_text_cols:
-            # Buscamos la columna en el Excel (parecida al nombre target)
-            match = next((c for c in df.columns if target in c), None)
-            
-            if match:
-                # CREAMOS LA VERSIÓN _CLEAN AUTOMÁTICAMENTE
-                clean_col_name = f"{target.replace('-', '_').replace(' ', '_')}_CLEAN" # Ej: SUB-GENRE -> SUB_GENRE_CLEAN
-                df[clean_col_name] = df[match].apply(lambda x: normalize_text(str(x)) if pd.notnull(x) else "UNKNOWN")
-                cleaned_cols_log.append(clean_col_name)
+        # 2. BUCLE "FULL SPECTRUM": Limpiar TODAS las columnas de texto
+        # Identificamos columnas que son objeto (texto) o que queremos forzar como texto
+        for col in df.columns:
+            # Ignoramos columnas que ya parecen ser conteos o índices internos
+            if col not in ['YEAR', 'MONTH', 'WEEK', 'Q']: 
+                # Creamos versión _CLEAN
+                clean_name = f"{col}_CLEAN"
+                df[clean_name] = df[col].apply(lambda x: normalize_text(str(x)) if pd.notnull(x) else "UNKNOWN")
+                cleaned_cols_log.append(clean_name)
         
-        # 3. TRATAMIENTO ESPECIAL DE FECHAS (AÑO Y MES)
-        col_inclusion = next((c for c in df.columns if 'INCLUSION' in c), None)
-        col_release = next((c for c in df.columns if 'RELEASE' in c), None)
-        col_year_man = next((c for c in df.columns if 'YEAR' == c), None)
-        col_month_man = next((c for c in df.columns if 'MONTH' == c), None)
+        # 3. LÓGICA DE TIEMPO (CRÍTICA PARA EL CHIVATO)
+        # Buscamos columnas clave dentro de los nombres estandarizados
+        col_inc = next((c for c in df.columns if 'INCLUSION' in c), None)
+        col_year = next((c for c in df.columns if c == 'YEAR'), None)
+        col_month = next((c for c in df.columns if c == 'MONTH'), None)
 
         df['Year_Final'] = 0
         df['Month_Final'] = 0
         
-        # Prioridad 1: Inclusion Date
-        if col_inclusion:
-            dt_inc = pd.to_datetime(df[col_inclusion], errors='coerce')
+        # A. Intentar fecha de inclusión
+        if col_inc:
+            dt_inc = pd.to_datetime(df[col_inc], errors='coerce')
             df['Year_Final'] = dt_inc.dt.year.fillna(0).astype(int)
             df['Month_Final'] = dt_inc.dt.month.fillna(0).astype(int)
             
-        # Prioridad 2: Rellenar con Manuales
-        if col_year_man:
-            y_man = pd.to_numeric(df[col_year_man], errors='coerce').fillna(0).astype(int)
+        # B. Rellenar con Manuales
+        if col_year:
+            y_man = pd.to_numeric(df[col_year], errors='coerce').fillna(0).astype(int)
             df['Year_Final'] = df.apply(lambda x: y_man[x.name] if x['Year_Final'] == 0 else x['Year_Final'], axis=1)
 
-        if col_month_man:
+        if col_month:
             mapa_mes = {'ENERO':1, 'ENE':1, 'JAN':1, 'FEBRERO':2, 'FEB':2, 'MARZO':3, 'MAR':3,
                         'ABRIL':4, 'ABR':4, 'MAYO':5, 'MAY':5, 'JUNIO':6, 'JUN':6,
                         'JULIO':7, 'JUL':7, 'AGOSTO':8, 'AGO':8, 'SEPTIEMBRE':9, 'SEP':9,
@@ -117,12 +113,13 @@ def clean_dataframe(df):
                 if s.isdigit(): return int(s)
                 return mapa_mes.get(s, 0)
                 
-            m_man = df[col_month_man].apply(get_month)
+            m_man = df[col_month].apply(get_month)
             df['Month_Final'] = df.apply(lambda x: m_man[x.name] if x['Month_Final'] == 0 else x['Month_Final'], axis=1)
 
-        # Filtro de seguridad (Filas vacías)
-        if 'DSP_CLEAN' in df.columns:
-            df = df[df['DSP_CLEAN'] != 'UNKNOWN']
+        # Filtro de Seguridad: Buscamos alguna columna que se parezca a DSP para filtrar basura
+        col_dsp_clean = next((c for c in cleaned_cols_log if 'DSP' in c), None)
+        if col_dsp_clean:
+            df = df[df[col_dsp_clean] != 'UNKNOWN']
 
         return df, cleaned_cols_log
 
@@ -150,14 +147,20 @@ with st.sidebar:
     df, cols_clean = clean_dataframe(raw_df)
     
     if not df.empty:
-        # VISOR DE COLUMNAS DISPONIBLES (Para que sepas qué puedes preguntar)
-        with st.expander("✅ Columnas Listas para Analizar"):
+        # VISOR DE COLUMNAS DISPONIBLES (AHORA DEBERÍAN SER TODAS)
+        with st.expander(f"✅ {len(cols_clean)} Columnas Limpias"):
             st.write(cols_clean)
         
         # TABLA DE VERDAD (AÑO | MES | DSP)
-        pivot = df.groupby(['Year_Final', 'Month_Final', 'DSP_CLEAN']).size().reset_index(name='Count')
-        pivot = pivot[pivot['Count'] > 0]
-        truth_table = pivot.to_string(index=False)
+        # Necesitamos saber cuál es la columna DSP limpia para agrupar
+        col_dsp_clean = next((c for c in cols_clean if 'DSP' in c), None)
+        
+        if col_dsp_clean:
+            pivot = df.groupby(['Year_Final', 'Month_Final', col_dsp_clean]).size().reset_index(name='Count')
+            pivot = pivot[pivot['Count'] > 0]
+            truth_table = pivot.to_string(index=False)
+        else:
+            truth_table = "No se detectó columna DSP."
             
     if st.button("🧹 Reiniciar"):
         st.session_state.messages = []
@@ -170,13 +173,13 @@ if not df.empty:
     st.title("🎹 ONErpm Data Analyst")
     
     if "messages" not in st.session_state:
-        st.session_state.messages = [{"role": "assistant", "content": f"He limpiado y estandarizado {len(cols_clean)} columnas (Artistas, Géneros, Territorios, etc). ¿Qué quieres descubrir?"}]
+        st.session_state.messages = [{"role": "assistant", "content": f"He procesado el 100% de las columnas. Puedo cruzar Artistas, Formatos, Origen, Business Unit... ¡lo que sea!"}]
 
     for msg in st.session_state.messages:
         with st.chat_message(msg["role"]):
             st.markdown(msg["content"])
 
-    if prompt := st.chat_input("Ej: Top 5 Artistas en México en 2025"):
+    if prompt := st.chat_input("Ej: Distribución por Format en 2025"):
         st.session_state.messages.append({"role": "user", "content": prompt})
         with st.chat_message("user"):
             st.markdown(prompt)
@@ -186,33 +189,33 @@ if not df.empty:
             caja.info(f"🧠 Analizando...")
             
             try:
-                # PROMPT UNIVERSAL
+                # PROMPT UNIVERSAL V17
                 prompt_sys = f"""
                 Actúa como Data Analyst Experto.
                 
                 TABLA DE VERDAD (Referencia de Fechas/DSP):
                 {truth_table}
                 
-                DATOS DISPONIBLES (df):
-                - Columnas LIMPIAS (Úsalas para filtrar): {cols_clean}
-                - Fechas: `Year_Final`, `Month_Final`.
+                COLUMNAS LIMPIAS DISPONIBLES (df):
+                {cols_clean}
+                (Nota: Todas estas columnas han sido normalizadas: MAYÚSCULAS, SIN TILDES).
+                
+                FECHAS CALCULADAS: `Year_Final`, `Month_Final`.
                 
                 USUARIO: "{prompt}"
                 
                 INSTRUCCIONES:
-                1. **Mapeo de Columnas**:
-                   - Si preguntan por ARTISTAS -> Usa `ARTIST_CLEAN`.
-                   - Si preguntan por GÉNERO -> Usa `GENRE_CLEAN`.
-                   - Si preguntan por TERRITORIO/PAÍS -> Usa `TERRITORY_CLEAN`.
-                   - Si preguntan por DSP -> Usa `DSP_CLEAN`.
+                1. **Identificar Columna**: Busca la columna _CLEAN que mejor coincida con lo que pide el usuario.
+                   - Ej: "Formato" -> `FORMAT_CLEAN`
+                   - Ej: "Origen" -> `ORIGIN_CLEAN`
+                   - Ej: "Business Unit" -> `BUSINESS_UNIT_CLEAN`
                 
-                2. **Filtrado**:
-                   - Usa SIEMPRE `normalize_text('Valor')` para comparar.
-                   - Ejemplo: `df[df['TERRITORY_CLEAN'] == normalize_text('Mexico')]`.
+                2. **Filtrar**:
+                   - Usa SIEMPRE `normalize_text('Valor')` para comparar valores de texto.
                 
-                3. **Visualización**:
+                3. **Visualizar**:
                    - `plotly.express` (px) con `template='plotly_white'`.
-                   - Texto negro.
+                   - Si piden conteos/totales, usa `st.metric`.
                 
                 Genera SOLO Python.
                 """

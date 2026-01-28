@@ -5,3 +5,4 @@ st-gsheets-connection
 matplotlib
 seaborn
 tabulate
+plotly

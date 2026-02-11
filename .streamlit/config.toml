@@ -9,5 +9,11 @@ font = "sans serif"
 [server]
 runOnSave = true
 
+[client]
+showSidebarNavigation = false
+
+[layout]
+initialSidebarState = "expanded"
+
 [browser]
 gatherUsageStats = false

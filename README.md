@@ -1,14 +1,14 @@
-# 🚀 DSP Global Analytics Agent [BETA v1.1]
+# 🚀 DSP Global Analytics Agent [BETA v1.3]
 
-> **Status:** 🚧 BETA RELEASE (v1.1)  
+> **Status:** 🚧 BETA RELEASE (v1.3)  
 > Powered by **Google Gemini 2.0 Flash** & **Streamlit**
 
 An advanced AI-driven analytics tool designed for ONErpm's DSP Global team. It enables natural language querying of complex music streaming data, automatically generating Python code to visualize trends, editorial placements, and artist performance.
 
-## v1.1 Updates
+## v1.3 Updates
+- 📱 **Sidebar UX:** Sidebar is now permanently expanded by default on all devices.
 - 🎨 **Enhanced UI:** Consistent chart branding (Orange), improved axis legibility (Dark Grey), and visible Apple logo (Silver).
-- 🧠 **Smarter AI:** Strict anti-hallucination logic, improved code generation, and accurate data referencing.
-- ⚡ **Performance:** Faster response times with Gemini 1.5 Flash.
+- 🧠 **Smart AI:** Strict anti-hallucination logic, improved code generation, and accurate data referencing.
 
 ## Key Features
 - 🗣️ **Natural Language Interface:** Ask questions like *"Who are the top 5 growing artists in Spotify?"*

@@ -29,46 +29,48 @@ st.markdown("""
     /* ── Base ── */
     html, body, [class*="css"] {
         font-family: 'Inter', -apple-system, sans-serif !important;
+        color: #111827 !important;
     }
     .stApp {
-        background: #0F1117 !important;
+        background: #F9FAFB !important;
     }
     
     /* ── Headers ── */
     h1, h2, h3, h4, h5 { 
-        color: #F9FAFB !important; 
+        color: #111827 !important; 
         font-weight: 700 !important;
         letter-spacing: -0.3px;
     }
     p, span, li, label, div {
-        color: #D1D5DB !important;
+        color: #374151 !important;
     }
     
     /* ── Glass Card (Metrics) ── */
     div[data-testid="stMetric"] {
-        background: rgba(255, 255, 255, 0.04) !important;
+        background: rgba(255, 255, 255, 0.7) !important;
         backdrop-filter: blur(20px);
         -webkit-backdrop-filter: blur(20px);
-        border: 1px solid rgba(255, 255, 255, 0.08);
+        border: 1px solid rgba(0, 0, 0, 0.05);
         border-radius: 16px;
         padding: 20px 24px;
+        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03);
         transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
     }
     div[data-testid="stMetric"]:hover {
-        background: rgba(255, 255, 255, 0.07) !important;
+        background: #FFFFFF !important;
         border-color: rgba(249, 115, 22, 0.4);
-        box-shadow: 0 0 30px rgba(249, 115, 22, 0.1);
+        box-shadow: 0 10px 15px -3px rgba(249, 115, 22, 0.1), 0 4px 6px -2px rgba(249, 115, 22, 0.05);
         transform: translateY(-3px);
     }
     div[data-testid="stMetricLabel"] { 
-        color: #9CA3AF !important; 
+        color: #6B7280 !important; 
         font-size: 0.78rem !important; 
         font-weight: 500 !important; 
         text-transform: uppercase;
         letter-spacing: 0.08em;
     }
     div[data-testid="stMetricValue"] { 
-        color: #F9FAFB !important; 
+        color: #111827 !important; 
         font-size: 1.8rem !important; 
         font-weight: 800 !important;
     }
@@ -79,14 +81,14 @@ st.markdown("""
     /* ── Tabs ── */
     .stTabs [data-baseweb="tab-list"] {
         gap: 8px;
-        background: rgba(255, 255, 255, 0.03);
+        background: #F3F4F6;
         border-radius: 12px;
         padding: 4px;
-        border: 1px solid rgba(255, 255, 255, 0.06);
+        border: 1px solid #E5E7EB;
     }
     .stTabs [data-baseweb="tab"] {
         border-radius: 10px;
-        color: #9CA3AF !important;
+        color: #6B7280 !important;
         font-weight: 500;
         padding: 10px 20px;
         transition: all 0.2s;
@@ -95,6 +97,7 @@ st.markdown("""
         background: linear-gradient(135deg, #F97316 0%, #EA580C 100%) !important;
         color: #FFFFFF !important;
         border-radius: 10px;
+        box-shadow: 0 4px 6px -1px rgba(249, 115, 22, 0.2);
     }
     .stTabs [data-baseweb="tab-border"] { display: none; }
     .stTabs [data-baseweb="tab-highlight"] { display: none; }
@@ -108,64 +111,71 @@ st.markdown("""
         font-weight: 600;
         padding: 0.6rem 1.2rem;
         transition: all 0.3s;
+        box-shadow: 0 4px 6px -1px rgba(249, 115, 22, 0.2);
     }
     .stButton button:hover, .stDownloadButton button:hover {
-        box-shadow: 0 8px 25px rgba(249, 115, 22, 0.35);
+        box-shadow: 0 8px 15px rgba(249, 115, 22, 0.35);
         transform: translateY(-2px);
     }
     
     /* ── Chat Messages ── */
     .stChatMessage {
-        background: rgba(255, 255, 255, 0.04) !important;
-        border: 1px solid rgba(255, 255, 255, 0.06);
+        background: #FFFFFF !important;
+        border: 1px solid #E5E7EB;
         border-radius: 16px;
+        box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
     }
     
     /* ── Sidebar ── */
     section[data-testid="stSidebar"] {
-        background: linear-gradient(180deg, #13151F 0%, #0F1117 100%) !important;
-        border-right: 1px solid rgba(255, 255, 255, 0.06);
+        background: #FFFFFF !important;
+        border-right: 1px solid #E5E7EB;
     }
     section[data-testid="stSidebar"] .stSelectbox label,
     section[data-testid="stSidebar"] .stSelectbox div {
-        color: #D1D5DB !important;
+        color: #374151 !important;
     }
     
     /* ── Inputs & Selects ── */
     .stSelectbox > div > div,
     .stMultiSelect > div > div {
-        background: rgba(255, 255, 255, 0.05) !important;
-        border: 1px solid rgba(255, 255, 255, 0.1) !important;
+        background: #FFFFFF !important;
+        border: 1px solid #E5E7EB !important;
         border-radius: 10px;
-        color: #F9FAFB !important;
+        color: #111827 !important;
+        box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
     }
     
     /* ── Chat Input ── */
     .stChatInput textarea {
-        background: rgba(255, 255, 255, 0.05) !important;
-        border: 1px solid rgba(255, 255, 255, 0.1) !important;
+        background: #FFFFFF !important;
+        border: 1px solid #E5E7EB !important;
         border-radius: 12px;
-        color: #F9FAFB !important;
+        color: #111827 !important;
+        box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
     }
     .stChatInput textarea:focus {
         border-color: rgba(249, 115, 22, 0.5) !important;
-        box-shadow: 0 0 15px rgba(249, 115, 22, 0.15);
+        box-shadow: 0 0 0 3px rgba(249, 115, 22, 0.1) !important;
     }
     
     /* ── Dataframe ── */
     .stDataFrame {
-        border: 1px solid rgba(255, 255, 255, 0.06);
+        border: 1px solid #E5E7EB;
         border-radius: 12px;
         overflow: hidden;
+        background: #FFFFFF;
     }
     
     /* ── Dividers ── */
-    hr { border-color: rgba(255, 255, 255, 0.06) !important; }
+    hr { border-color: #E5E7EB !important; }
     
     /* ── Expander ── */
     .streamlit-expanderHeader {
-        background: rgba(255, 255, 255, 0.04) !important;
+        background: #FFFFFF !important;
         border-radius: 10px;
+        border: 1px solid #E5E7EB;
+        color: #111827 !important;
     }
     
     /* ── Alerts ── */
@@ -174,29 +184,32 @@ st.markdown("""
     /* ── Suggested Prompt Pills ── */
     .prompt-pill {
         display: inline-block;
-        background: rgba(255,255,255,0.05);
-        border: 1px solid rgba(255,255,255,0.1);
+        background: #FFFFFF;
+        border: 1px solid #E5E7EB;
         border-radius: 20px;
         padding: 8px 16px;
         margin: 4px;
-        color: #D1D5DB !important;
+        color: #374151 !important;
         font-size: 0.82rem;
         cursor: pointer;
         transition: all 0.2s;
+        box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
     }
     .prompt-pill:hover {
-        background: rgba(249,115,22,0.15);
-        border-color: rgba(249,115,22,0.4);
-        color: #F97316 !important;
+        background: #FFF7ED;
+        border-color: #F97316;
+        color: #C2410C !important;
+        box-shadow: 0 2px 4px 0 rgba(249, 115, 22, 0.1);
     }
     
     /* ── Glass Section Cards ── */
     .glass-section {
-        background: rgba(255,255,255,0.03);
-        border: 1px solid rgba(255,255,255,0.06);
+        background: #FFFFFF;
+        border: 1px solid #E5E7EB;
         border-radius: 16px;
         padding: 20px;
         margin-bottom: 16px;
+        box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06);
     }
     
     /* ── Growth Table ── */
@@ -205,35 +218,35 @@ st.markdown("""
         justify-content: space-between;
         align-items: center;
         padding: 10px 16px;
-        border-bottom: 1px solid rgba(255,255,255,0.04);
+        border-bottom: 1px solid #F3F4F6;
         transition: background 0.2s;
     }
     .growth-row:hover {
-        background: rgba(255,255,255,0.03);
+        background: #F9FAFB;
     }
     .growth-row:last-child {
         border-bottom: none;
     }
     .dsp-name {
-        color: #F9FAFB !important;
+        color: #111827 !important;
         font-weight: 600;
         font-size: 0.9rem;
     }
     .dsp-count {
-        color: #9CA3AF !important;
+        color: #6B7280 !important;
         font-size: 0.82rem;
     }
     .growth-badge-up {
-        background: rgba(16,185,129,0.15);
-        color: #10B981 !important;
+        background: #DCFCE7;
+        color: #15803D !important;
         padding: 3px 10px;
         border-radius: 20px;
         font-size: 0.75rem;
         font-weight: 600;
     }
     .growth-badge-down {
-        background: rgba(239,68,68,0.15);
-        color: #EF4444 !important;
+        background: #FEE2E2;
+        color: #B91C1C !important;
         padding: 3px 10px;
         border-radius: 20px;
         font-size: 0.75rem;
@@ -333,10 +346,10 @@ def get_valid_models():
 CHART_LAYOUT = dict(
     paper_bgcolor='rgba(0,0,0,0)',
     plot_bgcolor='rgba(0,0,0,0)',
-    font=dict(color='#9CA3AF', family='Inter'),
+    font=dict(color='#374151', family='Inter'),
     margin=dict(t=20, b=40, l=40, r=20),
 )
-GRID_STYLE = dict(gridcolor='rgba(255,255,255,0.04)', zerolinecolor='rgba(255,255,255,0.04)')
+GRID_STYLE = dict(gridcolor='rgba(0,0,0,0.05)', zerolinecolor='rgba(0,0,0,0.05)')
 ACCENT_SEQUENCE = ['#F97316', '#EA580C', '#FB923C', '#10B981', '#3B82F6', '#EF4444', '#FBBF24', '#8B5CF6']
 
 # DSP Brand Colors
@@ -346,8 +359,9 @@ DSP_COLORS = {
     'CLARO': '#F87171',
     'YOUTUBE': '#EF4444',
     'MOVISTAR': '#1E40AF',
-    'TIDAL': '#9CA3AF',
-    'APPLE': '#F9FAFB',
+    'MOVISTAR': '#1E40AF',
+    'TIDAL': '#000000', # Black
+    'APPLE': '#F3F4F6', # Light/White
     'DEEZER': '#A855F7',
 }
 DEFAULT_DSP_COLOR = '#FBBF24'  # Yellow for others
@@ -358,6 +372,12 @@ def get_dsp_color(dsp_name):
         if key in name:
             return color
     return DEFAULT_DSP_COLOR
+    
+# ... (rest of file) ...
+
+                    # ... inside call_ai logic ...
+                    
+
 
 def get_greeting():
     hour = datetime.now().hour
@@ -376,7 +396,7 @@ ONERPM_LOGO = "https://onerpm.com/wp-content/themes/onerpm-v2/assets/images/head
 with st.sidebar:
     st.markdown(f"""
     <div style='text-align: center; padding: 8px 0 16px 0;'>
-        <img src='{ONERPM_LOGO}' width='140' style='filter: brightness(1.3); object-fit: contain; object-position: bottom;'>
+        <img src='{ONERPM_LOGO}' width='140' style='filter: brightness(0); object-fit: contain; object-position: bottom;'>
         <p style='color: #6B7280 !important; font-size: 0.7rem; margin-top: 6px; letter-spacing: 0.15em; text-transform: uppercase;'>DSP Analytics Suite</p>
     </div>
     """, unsafe_allow_html=True)
@@ -612,14 +632,24 @@ if not df.empty:
                 dist.columns = ['DSP', 'Total']
                 dist_top = dist.head(8)
                 dsp_chart_colors = [get_dsp_color(d) for d in dist_top['DSP']]
+                
+                # Dynamic text color based on background
+                text_colors = []
+                for c in dsp_chart_colors:
+                    # Simple brightness check: if hex is dark -> white text, else black
+                    h = c.lstrip('#')
+                    rgb = tuple(int(h[i:i+2], 16) for i in (0, 2, 4))
+                    lum = (0.299*rgb[0] + 0.587*rgb[1] + 0.114*rgb[2])
+                    text_colors.append('#FFFFFF' if lum < 128 else '#111111')
+
                 fig_donut = px.pie(
                     dist_top, names='DSP', values='Total', hole=0.65,
                     color_discrete_sequence=dsp_chart_colors
                 )
                 fig_donut.update_traces(
                     textinfo='percent+label',
-                    textfont=dict(size=11, color='#111111'),
-                    marker=dict(line=dict(color='#0F1117', width=2))
+                    textfont=dict(size=11, color=text_colors),
+                    marker=dict(line=dict(color='#FFFFFF', width=1))
                 )
                 fig_donut.update_layout(
                     paper_bgcolor='rgba(0,0,0,0)',
@@ -640,7 +670,7 @@ if not df.empty:
                 heat_pivot.values,
                 x=heat_pivot.columns.tolist(),
                 y=[str(y) for y in heat_pivot.index],
-                color_continuous_scale=[[0, '#1A1D29'], [0.3, '#7C2D12'], [0.6, '#EA580C'], [1, '#FB923C']],
+                color_continuous_scale=[[0, '#FFF7ED'], [0.3, '#FDBA74'], [0.6, '#F97316'], [1, '#C2410C']],
                 aspect='auto'
             )
             fig_heat.update_traces(
@@ -666,17 +696,24 @@ if not df.empty:
         """, unsafe_allow_html=True)
         
         # Suggested prompts
-        st.markdown("""
-        <div style='margin-bottom: 16px;'>
-            <p style='color: #6B7280 !important; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 8px;'>Sugerencias rápidas</p>
-            <div>
-                <span class='prompt-pill'>📈 Proyección Spotify Q1 2026</span>
-                <span class='prompt-pill'>🔄 Comparar DSPs último año</span>
-                <span class='prompt-pill'>📊 Top 10 DSPs por crecimiento</span>
-                <span class='prompt-pill'>🎯 Análisis de tendencias mensuales</span>
-            </div>
-        </div>
-        """, unsafe_allow_html=True)
+        # Suggested prompts (Interactive Buttons)
+        st.markdown("<p style='color: #6B7280 !important; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 8px;'>Sugerencias rápidas</p>", unsafe_allow_html=True)
+        
+        sug_cols = st.columns(4)
+        clicked_prompt = None
+        
+        with sug_cols[0]:
+            if st.button("📈 Proyección Spotify Q1 2026", use_container_width=True):
+                clicked_prompt = "Proyección Spotify Q1 2026"
+        with sug_cols[1]:
+            if st.button("🔄 Comparar DSPs último año", use_container_width=True):
+                clicked_prompt = "Comparar DSPs último año"
+        with sug_cols[2]:
+            if st.button("📊 Top 10 DSPs por crecimiento", use_container_width=True):
+                clicked_prompt = "Top 10 DSPs por crecimiento"
+        with sug_cols[3]:
+            if st.button("🎯 Tendencias mensuales", use_container_width=True):
+                clicked_prompt = "Análisis de tendencias mensuales"
         
         if "messages" not in st.session_state:
             st.session_state.messages = [{"role": "assistant", "content": "👋 ¡Hola! Soy tu analista de datos. Puedo hacer proyecciones, comparativas, y análisis profundos. Escribe tu consulta o usa una de las sugerencias de arriba."}]
@@ -685,7 +722,12 @@ if not df.empty:
             with st.chat_message(msg["role"]):
                 st.markdown(msg["content"])
 
-        if prompt := st.chat_input("Escribe tu consulta aquí..."):
+        user_input = st.chat_input("Escribe tu consulta aquí...")
+        
+        # Determine strict prompt source
+        prompt = user_input if user_input else clicked_prompt
+        
+        if prompt:
             st.session_state.messages.append({"role": "user", "content": prompt})
             with st.chat_message("user"):
                 st.markdown(prompt)
@@ -734,81 +776,49 @@ if not df.empty:
                     # Sample raw data (5 rows) to show structure
                     sample_rows = df.head(5)[[c for c in df.columns if 'CLEAN' in c or 'Year' in c or 'Month' in c]].to_string(index=False)
                     
-                    prompt_sys = f"""Genera SOLO código Python ejecutable. MÁXIMO 50 LÍNEAS. SIN imports, SIN crear DataFrames.
+                    prompt_sys = f"""ERES UN ANALISTA DE DATOS PYTHON. TU ÚNICO TRABAJO ES ESCRIBIR CÓDIGO PARA CONSULTAR EL DATAFRAME `df`.
+NO RESPONDAS CON TEXTO. NO INVENTES DATOS. SOLO GENERA CÓDIGO.
 
-VARIABLES YA CARGADAS:
-- df: DataFrame REAL ({len(df)} filas).
-- Columnas ÚTILES: {col_list}
-- Year_Final (int), Month_Final (int)
+CONTEXTO DE DATOS:
+- df: DataFrame con {len(df)} filas. CADA FILA ES UN DESTAQUE (PLACEMENT).
+- Columnas: {col_list}, Year_Final, Month_Final.
+- Artistas Ejemplo: {top_artists} (Usa str.contains para buscar).
+- Géneros Ejemplo: {top_genres}.
 
-EJEMPLOS DE VALORES REALES:
-- Artistas ({col_artist}): {top_artists}
-- Géneros ({col_genre}): {top_genres}
-- BU ({col_bu}): (Usa {col_genre} si es None)
+TU OBJETIVO: {prompt}
 
-MUESTRA DE DATOS (5 filas):
-{sample_rows}
+REGLAS DE ORO (Si las rompes, fallas):
+1. **SSOT (Single Source of Truth):** `df` es la ÚNICA fuente de verdad.
+   - NO asumas que un artista tiene X destaques. CUENTALOS: `len(df[...])`.
+2. **LÓGICA DE NEGOCIO:**
+   - **Placements = Filas.** `df.shape[0]` o `len(df)`.
+   - **Artistas:** Usa `df['{col_artist}'].str.contains('NOMBRE', case=False, na=False)`.
+   - **Fechas:** `Year_Final` (int). `current_year = df['Year_Final'].max()`.
+3. **VISUALIZACIÓN OBLIGATORIA:**
+   - SIEMPRE genera un `st.plotly_chart` o `st.dataframe`.
+   - Usa `st.markdown` para KPIs con estilo Glassmorphism.
+   - NUNCA uses `print()`.
+   - Usa `st.markdown` para explicar resultados, pero basate en los datos.
 
-SOLICITUD: {prompt}
+SOLUCIÓN PYTHON (Copia y pega esto en tu mente):
+1. Define `current_year`.
+2. Filtra `df` según la pregunta (por año, artista, DSP).
+3. Agrupa y cuenta: `res = filtered.groupby(...).size()`.
+4. Ordena: `res.sort_values(...)`.
+5. Grafica con Plotly: IMPORTANTE -> Usa `color_discrete_sequence=['#F97316']`.
+6. Muestra KPI con `st.markdown`.
 
-REGLAS OBLIGATORIAS:
-1. **VISUALIZACIÓN PREMIUM**: 
-   - SIEMPRE genera un gráfico (`st.plotly_chart`).
-   - Usa tarjetas Glassmorphism para KPIs (`st.markdown`).
-   - NO uses `print()`.
-2. **LÓGICA DE ARTISTAS (FEATURING)**:
-   - "Chimbala" cuenta si está en "Ken-Y, Chimbala".
-   - USA: `df[df['{col_artist}'].str.contains('NOMBRE', case=False, na=False)]`.
-   - NO uses `==` para artistas, usa `str.contains`.
-3. **BILLETES (PLACEMENTS)**: 
-   - **1 Fila = 1 Placement**. Cuenta con `len()`.
-   - Si un artista tiene 50 filas, tiene 50 placements.
-4. **FILTROS GENERALES**: Usa `normalize_text` para DSPs o BUs, pero `str.contains` para artistas.
-5. **COLUMNAS CALCULADAS**: Crea columnas ANTES de agrupar.
-
-EJEMPLO DE OUTPUT (Tarjeta + Gráfico):
-current_year = df['Year_Final'].max()
-data = df[df['Year_Final'].isin([current_year, current_year-1])].copy()
-# Filtrar artista con contains para capturar feats
-data = data[data['{col_artist}'].str.contains('CHIMBALA', case=False, na=False)]
-
-# Gráfico obligatorio
-by_year = data.groupby('Year_Final').size().reset_index(name='Total')
-fig = px.bar(by_year, x='Year_Final', y='Total', color_discrete_sequence=['#F97316'])
-fig.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', font=dict(color='#D1D5DB'))
-st.plotly_chart(fig, use_container_width=True)
-
-# Tarjetas de resumen
+EJEMPLO CODIGO:
+current = df['Year_Final'].max()
+# 1. Filtrar
+data = df[(df['Year_Final'] == current) & (df['{col_artist}'].str.contains('Bad Bunny', case=False, na=False))]
+# 2. Contar
 total = len(data)
-st.markdown(f'''
-<div style='background: rgba(249,115,22,0.1); border: 1px solid rgba(249,115,22,0.2); border-radius: 12px; padding: 16px; text-align: center;'>
-    <h3 style='color: #F9FAFB; margin: 0;'>{{total}}</h3>
-    <p style='color: #F97316; margin: 0; font-size: 0.8rem; text-transform: uppercase;'>Placements Totales</p>
-</div>
-''', unsafe_allow_html=True)
-
-for _, row in top.iterrows():
-    st.markdown(f'''
-    <div style='background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 12px; padding: 12px; margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center;'>
-        <div>
-            <span style='color: #9CA3AF; font-size: 0.8rem; text-transform: uppercase;'>{{row['BU_Effective']}}</span>
-            <h4 style='color: #F9FAFB; margin: 2px 0 0 0;'>{{row['{col_artist}'].title()}}</h4>
-        </div>
-        <div style='background: rgba(249,115,22,0.2); color: #F97316; padding: 4px 12px; border-radius: 20px; font-weight: bold;'>
-            {{row['Total']}} Destaques
-        </div>
-    </div>
-    ''', unsafe_allow_html=True)
-
-EJEMPLO CORRECTO COMPLETO:
-data = df[df['DSP_CLEAN'] == normalize_text('Spotify')]
-by_year = data.groupby('Year_Final').size().reset_index(name='Total')
-fig = px.bar(by_year, x='Year_Final', y='Total', color_discrete_sequence=['#F97316'])
-fig.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', font=dict(color='#D1D5DB'))
+# 3. Graficar
+fig = px.bar(data.groupby('Month_Final').size().reset_index(name='C'), x='Month_Final', y='C', color_discrete_sequence=['#F97316'])
+fig.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', font=dict(color='#1F2937'))
 st.plotly_chart(fig, use_container_width=True)
-st.markdown(f"**Resultado:** Spotify tiene {{len(data):,}} registros totales.")
-
-IMPORTANTE: Sé CONCISO. Máximo 40 líneas. No escribas comentarios innecesarios. Código directo y funcional."""
+st.markdown(f"**Total:** {{total}} placements.")"""
 
                     # Use flash model first (fast), fallback to pro
                     primary = flash_model if flash_model else sel_model
